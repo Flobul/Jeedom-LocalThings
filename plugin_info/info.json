@@ -1,0 +1,40 @@
+{
+  "id": "localthings",
+  "name": "LocalThings",
+  "pluginVersion": "0.3.0",
+  "description": {
+    "fr_FR": "Contrôle local des appareils Samsung compatibles au moyen de CoAP sur DTLS. Le plugin découvre les appareils présents sur le réseau, crée les équipements Jeedom et génère automatiquement leurs commandes d'information et d'action, sans passer par l'API cloud SmartThings.",
+    "en_US": "Local control of compatible Samsung appliances over CoAP/DTLS. The plugin discovers devices on the LAN, creates Jeedom equipment and automatically generates information and action commands without using the SmartThings cloud API."
+  },
+  "installation": "Installez les dépendances, configurez les certificats LocalThings puis lancez une découverte du réseau. Les requêtes sont réalisées directement en PHP par les crons et les commandes Jeedom. Seuls les appareils Samsung Tizen RT/DAWIT récents exposant CoAP-DTLS sur les ports UDP 49152 à 49160 sont compatibles.",
+  "utilization": "La synchronisation crée un équipement par appareil détecté. Les commandes sont construites à partir des ressources et capacités réellement annoncées par chaque appareil.",
+  "licence": "AGPL",
+  "author": "DomoFlo1",
+  "require": "4.4",
+  "os": {
+    "min": 12
+  },
+  "category": "devicecommunication",
+  "hasDependency": true,
+  "hasOwnDeamon": false,
+  "maxDependancyInstallTime": 30,
+  "changelog": "https://github.com/Flobul/Jeedom-LocalThings/releases",
+  "documentation": "https://github.com/Flobul/Jeedom-LocalThings",
+  "link": {
+    "forum": "https://community.jeedom.com/tag/plugin-localthings"
+  },
+  "language": [
+    "fr_FR",
+    "en_US"
+  ],
+  "compatibility": [
+    "smart",
+    "luna",
+    "atlas",
+    "rpi",
+    "docker",
+    "diy",
+    "v4",
+    "mobile"
+  ]
+}

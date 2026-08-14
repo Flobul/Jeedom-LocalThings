@@ -1,0 +1,15 @@
+LocalThings for Jeedom
+======================
+
+The Jeedom integration code is distributed under AGPL-3.0-or-later.
+
+The protocol behavior and device mapping are adapted from:
+  LocalThings - https://github.com/mbillow/localthings
+  Copyright its contributors, licensed under the MIT License.
+
+The CoAP/DTLS behavior and bundled Samsung OCF root certificate are adapted
+from:
+  smartthings-local - https://github.com/QuiteYellow/SmartThings-Local
+  Copyright its contributors, licensed under the MIT License.
+
+The corresponding MIT license texts are retained under resources/attributions.

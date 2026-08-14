@@ -1,0 +1,22 @@
+name: Generate translations
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "core/i18n/**"
+      - "core/class/**"
+      - "core/ajax/**"
+      - "core/php/**"
+      - "desktop/**"
+      - "plugin_info/**"
+
+jobs:
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Mips2648/plugins-translations@v5
+

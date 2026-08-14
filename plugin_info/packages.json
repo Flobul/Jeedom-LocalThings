@@ -1,0 +1,10 @@
+{
+  "apt": {
+    "openssl": {},
+    "ca-certificates": {},
+    "iputils-ping": {}
+  },
+  "post-install": {
+    "script": "plugins/localthings/resources/install.sh"
+  }
+}

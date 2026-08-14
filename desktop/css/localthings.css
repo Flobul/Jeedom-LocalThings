@@ -1,0 +1,29 @@
+#div_localthings .localthings-discovery-bar {
+  max-width: 760px;
+  margin: 8px auto 22px;
+}
+
+#div_localthings .localthings-discovery-bar .progress {
+  height: 18px;
+  margin-top: 10px;
+}
+
+#div_localthings .localthings-value {
+  display: inline-block;
+  max-width: 100%;
+  padding-top: 7px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 767px) {
+  #div_localthings .localthings-discovery-bar {
+    margin-right: 6px;
+    margin-left: 6px;
+  }
+
+  #div_localthings .eqLogic > .input-group.pull-right {
+    float: none !important;
+    display: block !important;
+    margin-bottom: 8px;
+  }
+}
