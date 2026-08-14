@@ -45,6 +45,42 @@ La découverte ajoute un équipement Jeedom par appareil. Le client PHP lit les
 ressources réellement exposées et crée les commandes `info` et `action`
 correspondantes. Une adresse peut aussi être analysée manuellement.
 
+## Widgets
+
+Chaque équipement peut utiliser soit le widget standard du core Jeedom, soit
+le widget LocalThings depuis l'onglet **Équipement**. Le widget LocalThings
+conserve le bandeau et l'apparence du core Jeedom. Sa page principale affiche
+au maximum trois états utiles, les réglages actionnables et les commandes
+principales de l'appareil.
+
+Sur les appareils de lavage, les sélecteurs annoncés par la machine (cycle,
+température, essorage, rinçages et options comme Bubble Soak ou Add Wash) sont
+présentés ensemble avant les commandes de démarrage, pause et arrêt. Les autres
+familles disposent de la même organisation adaptée à leurs réglages.
+
+Les informations secondaires sont réparties dans des pages **Entretien**,
+**Consommation** et **Informations**. Une page n'est proposée que si l'appareil
+remonte des commandes correspondantes. La navigation utilise les onglets déjà
+fournis par Jeedom et chaque commande conserve son widget natif.
+
+Les valeurs techniques sont interprétées avant affichage lorsque leur sens est
+connu. Pour un lave-linge, l'entretien indique notamment si un nettoyage du
+tambour est recommandé, le seuil d'alerte et le nombre de lavages depuis le
+dernier nettoyage. La consommation n'affiche que la puissance actuelle, la
+consommation totale et, lorsqu'elle existe, celle du cycle. Les réglages de
+lavage reprennent les pictogrammes du widget SmartThings pour faciliter leur
+lecture. Les informations numériques historisées ouvrent directement
+l'historique Jeedom au clic. La page Informations ne conserve que les états
+secondaires utiles qui ne sont pas déjà affichés ailleurs.
+
+Les options binaires sont regroupées en interrupteurs On/Off dont l'état suit
+la commande d'information associée. La page Santé reprend les contrôles du
+transport, des certificats et du rafraîchissement, puis détaille chaque
+équipement. Un test de communication DTLS est également disponible après la
+dernière erreur dans la configuration de l'équipement. Les unités explicites
+des appareils sont normalisées pour Jeedom ; les mesures courantes reçoivent
+une unité cohérente même lorsque le firmware ne l'annonce pas.
+
 ## Compatibilité
 
 Les appareils doivent exposer un port CoAP-DTLS dans la plage UDP

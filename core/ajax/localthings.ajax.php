@@ -28,6 +28,13 @@ try {
             }
             ajax::success($eqLogic->refresh());
             break;
+        case 'testCommunication':
+            $eqLogic = localthings::byId((int) init('id'));
+            if (!is_object($eqLogic)) {
+                throw new Exception(__('Équipement LocalThings introuvable', __FILE__));
+            }
+            ajax::success($eqLogic->testCommunication());
+            break;
         case 'transportStatus':
             ajax::success(localthings::transportStatus());
             break;

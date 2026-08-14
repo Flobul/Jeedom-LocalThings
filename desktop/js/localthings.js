@@ -5,7 +5,7 @@
   const endpoint = "plugins/localthings/core/ajax/localthings.ajax.php";
   if (!root) return;
 
-  function ajax(action, data, success) {
+  function ajax(action, data, success, failure) {
     domUtils.ajax({
       type: "POST",
       url: endpoint,
@@ -13,10 +13,12 @@
       dataType: "json",
       error: function (request, status, error) {
         handleAjaxError(request, status, error);
+        if (failure) failure(error);
       },
       success: function (response) {
         if (response.state !== "ok") {
           jeedomUtils.showAlert({ message: response.result, level: "danger" });
+          if (failure) failure(response.result);
           return;
         }
         if (success) success(response.result);
@@ -104,6 +106,35 @@
       ajax("refresh", { id: id }, function () {
         jeedomUtils.showAlert({ message: "{{État de l’appareil actualisé}}", level: "success" });
       });
+      return;
+    }
+
+    const communicationTest = event.target.closest("#bt_testCommunicationLocalthings");
+    if (communicationTest) {
+      const id = document.querySelector('.eqLogicAttr[data-l1key="id"]')?.jeeValue();
+      if (!id) return;
+      communicationTest.disabled = true;
+      const icon = communicationTest.querySelector("i");
+      icon?.classList.add("fa-spin");
+      const resetCommunicationTest = function () {
+        communicationTest.disabled = false;
+        icon?.classList.remove("fa-spin");
+      };
+      ajax("testCommunication", { id: id }, function (result) {
+        resetCommunicationTest();
+        const lastCommunication = root.querySelector(
+          '.eqLogicAttr[data-l1key="configuration"][data-l2key="last_communication"]'
+        );
+        const lastError = root.querySelector(
+          '.eqLogicAttr[data-l1key="configuration"][data-l2key="last_error"]'
+        );
+        if (lastCommunication) lastCommunication.textContent = result.last_communication || "";
+        if (lastError) lastError.textContent = result.last_error || "";
+        jeedomUtils.showAlert({ message: result.message, level: "success" });
+      }, resetCommunicationTest);
+      window.setTimeout(function () {
+        resetCommunicationTest();
+      }, 20000);
     }
   });
 

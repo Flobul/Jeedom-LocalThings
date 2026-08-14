@@ -1,0 +1,394 @@
+.localthings-widget {
+  min-width: 290px;
+  min-height: 210px;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.localthings-widget > .widget-name {
+  display: block;
+  margin: 0;
+  overflow: hidden;
+  line-height: 21px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.localthings-widget > .widget-name .classTitreIcon {
+  min-width: 22px;
+  margin-top: 1px;
+  padding: 0 3px;
+  cursor: pointer;
+  line-height: 18px;
+}
+
+.localthings-widget > .widget-name .classTitreIcon:hover {
+  opacity: .7;
+}
+
+.localthings-widget > .widget-name .classTitreIcon > i {
+  color: var(--eqTitle-color, inherit);
+}
+
+.localthings-widget-body {
+  height: calc(100% - 30px);
+  overflow: hidden;
+}
+
+.localthings-widget-tabs {
+  display: flex;
+  margin: 0 6px;
+  padding-top: 3px;
+  border-bottom: 1px solid rgba(127, 127, 127, .24);
+}
+
+.localthings-widget-tabs > li {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0 0 -1px;
+}
+
+.localthings-widget-tabs > li > button {
+  appearance: none;
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  padding: 6px 5px;
+  overflow: hidden;
+  color: inherit;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  border-radius: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.localthings-widget-tabs > li > button:hover,
+.localthings-widget-tabs > li > button:focus {
+  background: rgba(127, 127, 127, .08);
+  outline: 0;
+}
+
+.localthings-widget-tabs > li.active > button {
+  color: var(--link-color, #2eaadb);
+  border-bottom-color: currentColor;
+  font-weight: 700;
+}
+
+.localthings-widget-tabs i {
+  margin-right: 4px;
+}
+
+.localthings-widget-pages {
+  height: calc(100% - 38px);
+  overflow: auto;
+  padding: 7px 9px 10px;
+}
+
+.localthings-widget-pages > .tab-pane {
+  display: none;
+}
+
+.localthings-widget-pages > .tab-pane.active {
+  display: block;
+}
+
+.localthings-widget-status {
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(127, 127, 127, .16);
+}
+
+.localthings-widget-section {
+  padding-top: 8px;
+}
+
+.localthings-widget-section + .localthings-widget-section {
+  margin-top: 7px;
+  border-top: 1px solid rgba(127, 127, 127, .16);
+}
+
+.localthings-widget-section h4 {
+  margin: 0 2px 8px;
+  opacity: .72;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .035em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.localthings-widget-command-grid {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.localthings-widget-command {
+  display: flex;
+  flex: 1 1 150px;
+  min-width: 120px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+}
+
+.localthings-widget-command-presented {
+  justify-content: flex-start;
+  min-height: 58px;
+  padding: 7px 9px;
+  border: 1px solid rgba(127, 127, 127, .14);
+  border-radius: 13px;
+  background: rgba(127, 127, 127, .065);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .06);
+}
+
+.localthings-widget-command-presented:hover {
+  border-color: rgba(46, 170, 219, .28);
+  box-shadow: 0 3px 9px rgba(0, 0, 0, .1);
+}
+
+.localthings-widget-command-icon {
+  display: flex;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  margin-right: 9px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #fff;
+  border-radius: 50%;
+  background: var(--link-color, #2eaadb);
+}
+
+.localthings-widget-command-icon img {
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+
+.localthings-widget-command-icon i {
+  color: #fff !important;
+  font-size: 17px;
+}
+
+.localthings-widget-command-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+
+.localthings-widget-command-label {
+  display: block;
+  margin-bottom: 2px;
+  overflow: hidden;
+  opacity: .72;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.localthings-widget-command-content > .cmd-widget {
+  width: 100% !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.localthings-widget-toggle-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.localthings-widget-toggle-actions > .cmd-widget {
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.localthings-widget-command-toggle {
+  flex-basis: 210px;
+}
+
+.localthings-widget-switch {
+  display: inline-flex;
+  margin: 0;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.localthings-toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.localthings-widget-switch-track {
+  position: relative;
+  display: inline-block;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 23px;
+  border-radius: 12px;
+  background: rgba(127, 127, 127, .42);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .18);
+  transition: background .18s ease;
+}
+
+.localthings-widget-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .3);
+  transition: transform .18s ease;
+}
+
+.localthings-toggle-input:checked + .localthings-widget-switch-track {
+  background: var(--link-color, #2eaadb);
+}
+
+.localthings-toggle-input:checked + .localthings-widget-switch-track .localthings-widget-switch-thumb {
+  transform: translateX(19px);
+}
+
+.localthings-toggle-input:focus + .localthings-widget-switch-track {
+  box-shadow: 0 0 0 2px rgba(46, 170, 219, .25), inset 0 1px 3px rgba(0, 0, 0, .18);
+}
+
+.localthings-toggle-input:disabled + .localthings-widget-switch-track,
+.localthings-toggle-input:disabled ~ .localthings-widget-switch-state {
+  opacity: .55;
+  cursor: wait;
+}
+
+.localthings-widget-switch-state {
+  min-width: 52px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.localthings-widget-command-presented .cmdName {
+  display: none !important;
+}
+
+.localthings-widget-command-presented select,
+.localthings-widget-command-presented .selectCmd {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 190px;
+}
+
+.localthings-widget-status .localthings-widget-command {
+  flex: 1 1 120px;
+  min-width: 105px;
+}
+
+.localthings-widget-status .localthings-widget-command-icon {
+  flex-basis: 32px;
+  width: 32px;
+  height: 32px;
+}
+
+.localthings-widget-controls .localthings-widget-command {
+  flex: 0 1 auto;
+  min-width: 90px;
+}
+
+.localthings-widget-controls .localthings-widget-command-presented {
+  min-height: 42px;
+  padding: 4px 8px;
+  border-radius: 22px;
+}
+
+.localthings-widget-controls .localthings-widget-command-icon {
+  flex-basis: 28px;
+  width: 28px;
+  height: 28px;
+  margin-right: 5px;
+}
+
+.localthings-widget-controls .localthings-widget-command-icon i {
+  font-size: 12px;
+}
+
+.localthings-widget-details .localthings-widget-command {
+  flex-basis: 160px;
+  border-bottom: 1px solid rgba(127, 127, 127, .12);
+}
+
+.localthings-widget-mobile {
+  min-width: 245px;
+}
+
+.localthings-widget-mobile .localthings-widget-pages {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+
+@media (max-width: 520px) {
+  .localthings-widget-tabs > li > button {
+    padding-right: 3px;
+    padding-left: 3px;
+  }
+
+  .localthings-widget-tabs i {
+    margin-right: 0;
+  }
+
+  .localthings-widget-tabs span {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .localthings-widget {
+    min-width: 220px;
+  }
+
+  .localthings-widget-command {
+    flex-basis: 120px;
+  }
+
+  .localthings-widget-command-presented {
+    min-height: 52px;
+    padding: 5px 7px;
+  }
+
+  .localthings-widget-command-icon {
+    flex-basis: 34px;
+    width: 34px;
+    height: 34px;
+    margin-right: 6px;
+  }
+
+  .localthings-widget-command-icon img {
+    width: 34px;
+    height: 34px;
+  }
+}

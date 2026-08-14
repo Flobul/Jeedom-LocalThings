@@ -8,9 +8,17 @@ function localthings_install()
 function localthings_update()
 {
     $interval = (int) config::byKey('poll_interval', 'localthings', 5);
-    if ($interval > 60) {
-        config::save('poll_interval', max(1, (int) round($interval / 60)), 'localthings');
+    $allowed = array(1, 2, 3, 4, 5, 10, 15, 20, 30, 45, 60, 120, 240, 360, 720, 1440);
+    if (!in_array($interval, $allowed, true)) {
+        $closest = 5;
+        foreach ($allowed as $candidate) {
+            if (abs($candidate - $interval) < abs($closest - $interval)) {
+                $closest = $candidate;
+            }
+        }
+        $interval = $closest;
     }
+    config::save('poll_interval', $interval, 'localthings');
     config::remove('daemon_port', 'localthings');
 }
 

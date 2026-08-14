@@ -8,6 +8,10 @@ class LocalThingsDeviceClient
 {
     public const PROBE_PORTS = array(49154, 49155, 49152, 49153, 49156, 49157, 49158, 49159, 49160);
 
+    // Samsung appliances need a short quiet period after a write. Reading the
+    // target resource too soon can make the firmware restore its former value.
+    private const WRITE_SETTLE_DELAY_US = 4500000;
+
     private $openssl;
     private $certificateStore;
     private $rootCaPath;
@@ -134,7 +138,13 @@ class LocalThingsDeviceClient
         try {
             $session->connect(12.0);
             $resources = $this->readResources($session);
-            if (!$bypassRemoteControl && !$this->mapper->remoteControlEnabled($resources)) {
+            $remoteControlEnabled = $this->mapper->remoteControlEnabled($resources);
+            $this->log(
+                'debug',
+                '[Command] Smart Control=' . ($remoteControlEnabled ? 'activé' : 'désactivé')
+                . ', contournement=' . ($bypassRemoteControl ? 'activé' : 'désactivé')
+            );
+            if (!$bypassRemoteControl && !$remoteControlEnabled) {
                 throw new LocalThingsCommandRejectedException('Smart Control est désactivé sur l’appareil');
             }
             $write = $this->mapper->buildWrite($recipe, $value, $resources);
@@ -192,50 +202,59 @@ class LocalThingsDeviceClient
 
     private function verifyWrite(LocalThingsSession $session, $path, $expected)
     {
-        $lastRepresentation = null;
-        foreach (array(750000, 3250000) as $delayMicroseconds) {
-            usleep($delayMicroseconds);
-            try {
-                list($code, $payload) = $session->get($path, 10.0);
-                if (($code >> 5) !== 2) {
-                    $this->log(
-                        'warning',
-                        '[Command] Vérification GET refusée : ' . LocalThingsCoap::formatCode($code)
-                    );
-                    return array('matched' => null, 'representation' => null);
-                }
-                $lastRepresentation = $this->decodeRepresentation($payload);
-                if (!is_array($lastRepresentation)) {
-                    $this->log('warning', '[Command] Réponse de vérification CBOR invalide');
-                    return array('matched' => null, 'representation' => null);
-                }
-                $matched = $this->representationContains($lastRepresentation, $expected);
-                $this->log(
-                    $matched ? 'info' : 'debug',
-                    '[Command] Vérification /' . implode('/', $path)
-                    . ' expected=' . $this->jsonForLog($expected)
-                    . ' actual=' . $this->jsonForLog($lastRepresentation)
-                    . ' applied=' . ($matched ? 'yes' : 'pending')
-                );
-                if ($matched) {
-                    return array('matched' => true, 'representation' => $lastRepresentation);
-                }
-            } catch (Exception $exception) {
+        $this->log(
+            'debug',
+            '[Command] Stabilisation pendant '
+            . $this->formatDelaySeconds(self::WRITE_SETTLE_DELAY_US)
+            . ' s avant vérification'
+        );
+        usleep(self::WRITE_SETTLE_DELAY_US);
+
+        try {
+            list($code, $payload) = $session->get($path, 10.0);
+            if (($code >> 5) !== 2) {
                 $this->log(
                     'warning',
-                    '[Command] Vérification indisponible : ' . $exception->getMessage()
+                    '[Command] Vérification GET refusée : ' . LocalThingsCoap::formatCode($code)
                 );
                 return array('matched' => null, 'representation' => null);
             }
+            $representation = $this->decodeRepresentation($payload);
+            if (!is_array($representation)) {
+                $this->log('warning', '[Command] Réponse de vérification CBOR invalide');
+                return array('matched' => null, 'representation' => null);
+            }
+            $matched = $this->representationContains($representation, $expected);
+            $this->log(
+                $matched ? 'info' : 'warning',
+                '[Command] Vérification /' . implode('/', $path)
+                . ' expected=' . $this->jsonForLog($expected)
+                . ' actual=' . $this->jsonForLog($representation)
+                . ' applied=' . ($matched ? 'yes' : 'no')
+            );
+            if ($matched) {
+                return array('matched' => true, 'representation' => $representation);
+            }
+        } catch (Exception $exception) {
+            $this->log(
+                'warning',
+                '[Command] Vérification indisponible : ' . $exception->getMessage()
+            );
+            return array('matched' => null, 'representation' => null);
         }
 
         $this->log(
             'warning',
             '[Command] Écriture non appliquée après stabilisation; expected='
             . $this->jsonForLog($expected)
-            . ' actual=' . $this->jsonForLog($lastRepresentation)
+            . ' actual=' . $this->jsonForLog($representation)
         );
-        return array('matched' => false, 'representation' => $lastRepresentation);
+        return array('matched' => false, 'representation' => $representation);
+    }
+
+    private function formatDelaySeconds($microseconds)
+    {
+        return rtrim(rtrim(number_format(((int) $microseconds) / 1000000, 1, '.', ''), '0'), '.');
     }
 
     private function decodeRepresentation($payload)
@@ -381,10 +400,13 @@ class LocalThingsDeviceClient
             usleep(200000);
             $identity = $this->readIdentity($session);
             $information = $resources['/information/vs/0'] ?? array();
-            $serial = trim((string) ($information['x.com.samsung.da.serialNum'] ?? ''));
-            if ($serial === '' || stripos($serial, 'nothing') === 0) {
-                $serial = $host . ':' . $port;
-            }
+            $serial = self::normalizeIdentifier(
+                $information['x.com.samsung.da.serialNum'] ?? ''
+            );
+            $ocfDeviceId = self::normalizeIdentifier($identity['device_id'] ?? '');
+            $deviceId = $serial !== ''
+                ? $serial
+                : ($ocfDeviceId !== '' ? $ocfDeviceId : $host . ':' . $port);
             $deviceType = $this->mapper->deviceType($resources, $identity);
             $model = trim((string) ($identity['model'] ?? ''));
             if ($model === '') {
@@ -402,13 +424,14 @@ class LocalThingsDeviceClient
                 'info',
                 '[Discovery] Identité reçue : modèle=' . ($model !== '' ? $model : 'inconnu')
                 . ', type=' . $deviceType
-                . ', série=' . $this->redactIdentifier($serial)
+                . ', série=' . ($serial !== '' ? $this->redactIdentifier($serial) : 'non communiquée')
+                . ', identifiant=' . $this->redactIdentifier($deviceId)
                 . ', ressources=' . count($resources)
                 . ', commandes=' . count($mapped['entities'])
             );
             return array(
                 'device' => array(
-                    'device_id' => $serial,
+                    'device_id' => $deviceId,
                     'host' => $host,
                     'port' => (int) $port,
                     'serial' => $serial,
@@ -473,6 +496,7 @@ class LocalThingsDeviceClient
             'manufacturer' => (string) ($profile['mnmn'] ?? 'Samsung'),
             'model' => (string) ($profile['mnmo'] ?? ''),
             'name' => (string) ($device['n'] ?? ''),
+            'device_id' => (string) ($device['di'] ?? ($device['piid'] ?? '')),
             'device_types' => is_array($types) ? array_values($types) : array(),
             'raw' => array('/oic/p' => $profile, '/oic/d' => $device, '/oic/res' => $links),
         );
@@ -490,6 +514,24 @@ class LocalThingsDeviceClient
             // Identity endpoints vary by firmware and are optional.
         }
         return array();
+    }
+
+    private static function normalizeIdentifier($value)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return '';
+        }
+        $compact = strtolower(preg_replace('/[^a-z0-9]/i', '', $value));
+        if (
+            $compact === ''
+            || in_array($compact, array('nothing', 'none', 'null', 'unknown', 'undefined'), true)
+            || preg_match('/^f+$/', $compact)
+            || preg_match('/^0+$/', $compact)
+        ) {
+            return '';
+        }
+        return $value;
     }
 
     private function createSession($host, $port)

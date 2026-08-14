@@ -26,12 +26,26 @@ if (!isConnect('admin')) {
             </div>
         </div>
         <div class="form-group">
-            <label class="col-sm-4 control-label">{{Intervalle de lecture}}</label>
-            <div class="col-sm-2">
-                <div class="input-group">
-                    <input type="number" min="1" max="1440" step="1" class="configKey form-control" data-l1key="poll_interval" placeholder="5">
-                    <span class="input-group-addon">{{min}}</span>
-                </div>
+            <label class="col-sm-4 control-label">{{Intervalle de rafraîchissement}}</label>
+            <div class="col-sm-3">
+                <select class="configKey form-control" data-l1key="poll_interval">
+                    <option value="1">1 min</option>
+                    <option value="2">2 min</option>
+                    <option value="3">3 min</option>
+                    <option value="4">4 min</option>
+                    <option value="5">5 min</option>
+                    <option value="10">10 min</option>
+                    <option value="15">15 min</option>
+                    <option value="20">20 min</option>
+                    <option value="30">30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">{{1 heure}}</option>
+                    <option value="120">{{2 heures}}</option>
+                    <option value="240">{{4 heures}}</option>
+                    <option value="360">{{6 heures}}</option>
+                    <option value="720">{{12 heures}}</option>
+                    <option value="1440">{{1 jour}}</option>
+                </select>
             </div>
         </div>
         <div class="form-group">

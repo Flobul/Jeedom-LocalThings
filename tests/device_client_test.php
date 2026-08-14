@@ -36,6 +36,26 @@ foreach (LocalThingsDeviceClient::PROBE_PORTS as $port) {
 
 $clientReflection = new ReflectionClass(LocalThingsDeviceClient::class);
 $client = $clientReflection->newInstanceWithoutConstructor();
+deviceClientCheck(
+    $clientReflection->getConstant('WRITE_SETTLE_DELAY_US') >= 4000000,
+    'write verification waits past the Samsung revert window'
+);
+$normalizeIdentifier = $clientReflection->getMethod('normalizeIdentifier');
+if (PHP_VERSION_ID < 80100) {
+    $normalizeIdentifier->setAccessible(true);
+}
+deviceClientCheck(
+    $normalizeIdentifier->invoke(null, 'FFFFFFFFFFFFFFF') === '',
+    'Samsung placeholder serial is ignored'
+);
+deviceClientCheck(
+    $normalizeIdentifier->invoke(null, '00000000-0000-0000-0000-000000000000') === '',
+    'nil OCF identifier is ignored'
+);
+deviceClientCheck(
+    $normalizeIdentifier->invoke(null, 'SERIAL-1234') === 'SERIAL-1234',
+    'real serial is preserved'
+);
 $contains = $clientReflection->getMethod('representationContains');
 if (PHP_VERSION_ID < 80100) {
     $contains->setAccessible(true);

@@ -134,7 +134,7 @@ class LocalThingsMapper
                     continue;
                 }
                 $key = $this->entityKey($href, $field);
-                $value = $this->displayValue($href, $field, $rawValue);
+                $value = $this->displayValue($href, $field, $rawValue, $representation);
                 $actions = $this->actionsFor(
                     $href,
                     $field,
@@ -152,7 +152,7 @@ class LocalThingsMapper
                     'platform' => $this->platform($href, $field, $rawValue, $actions),
                     'type' => 'info',
                     'subtype' => $this->subtype($href, $field, $rawValue, $actions),
-                    'unit' => $this->unit($href, $field),
+                    'unit' => $this->unit($href, $field, $representation, $rawValue),
                     'category' => $this->category($href, $field),
                     'value' => $value,
                     'options' => $this->optionsFor($field, $rawValue, $representation),
@@ -165,6 +165,7 @@ class LocalThingsMapper
         $this->appendOptionEntities($resources, $entities, $states);
         $this->appendCycleEntity($resources, $entities, $states);
         $this->appendOperationalEntities($resources, $entities, $states);
+        $this->appendMaintenanceSummary($resources, $entities, $states);
         $this->ensureUniqueEntityNames($entities);
         return array('entities' => $entities, 'states' => $states);
     }
@@ -329,7 +330,7 @@ class LocalThingsMapper
             $action['min'] = $range[0];
             $action['max'] = $range[1];
             $action['step'] = $range[2];
-            $action['unit'] = $this->unit($href, $field);
+            $action['unit'] = $this->unit($href, $field, $representation, $value);
             $actions[] = $action;
         }
         return $actions;
@@ -361,6 +362,7 @@ class LocalThingsMapper
         }
         $key = 'operational_controls_' . substr(sha1($href), 0, 8);
         $current = (string) $rep[$stateField];
+        $currentDisplay = $this->operationalStateLabel($current);
         $actions = array();
         foreach (array('Run' => 'Démarrer', 'Pause' => 'Pause', 'Ready' => 'Arrêter') as $fixed => $name) {
             $recipe = array(
@@ -379,11 +381,11 @@ class LocalThingsMapper
             'subtype' => 'string',
             'unit' => '',
             'category' => '',
-            'value' => $current,
+            'value' => $currentDisplay,
             'options' => array(),
             'actions' => $actions,
         );
-        $states[$key] = $current;
+        $states[$key] = $currentDisplay;
 
         $delayField = array_key_exists('x.com.samsung.da.delayEndTime', $rep)
             ? 'x.com.samsung.da.delayEndTime'
@@ -432,6 +434,7 @@ class LocalThingsMapper
             'StormWashZone',
             'AutoDoorRelease',
             'BubbleSoak',
+            'AddWash',
             'PreWashSetting',
             'IntensiveSetting',
         );
@@ -479,7 +482,7 @@ class LocalThingsMapper
                         'platform' => count($actions) > 0 ? 'switch' : 'sensor',
                         'type' => 'info',
                         'subtype' => count($actions) > 0 ? 'binary' : (is_numeric($value) ? 'numeric' : 'string'),
-                        'unit' => '',
+                        'unit' => $prefix === 'EnergyKW' ? 'Wh' : '',
                         'category' => '',
                         'value' => count($actions) > 0 ? ($value === 'On' ? 1 : 0) : $value,
                         'options' => array(),
@@ -489,6 +492,49 @@ class LocalThingsMapper
                 }
             }
         }
+    }
+
+    private function appendMaintenanceSummary($resources, &$entities, &$states)
+    {
+        $proposal = null;
+        $washingTimes = null;
+        foreach ($resources as $representation) {
+            if (!is_array($representation)) {
+                continue;
+            }
+            foreach ($representation as $field => $value) {
+                if (!is_numeric($value)) {
+                    continue;
+                }
+                $normalized = strtolower((string) $field);
+                if (strpos($normalized, 'drumcleanproposal') !== false) {
+                    $proposal = (int) $value;
+                } elseif (strpos($normalized, 'washingtimes') !== false) {
+                    $washingTimes = (int) $value;
+                }
+            }
+        }
+        if ($proposal === null || $washingTimes === null || $proposal <= 0) {
+            return;
+        }
+
+        $key = 'maintenance_drum_clean_status';
+        $value = $washingTimes >= $proposal
+            ? $this->tr('Nettoyage recommandé')
+            : $this->tr('Aucun nettoyage nécessaire');
+        $entities[] = array(
+            'key' => $key,
+            'name' => $this->tr('Nettoyage du tambour'),
+            'platform' => 'sensor',
+            'type' => 'info',
+            'subtype' => 'string',
+            'unit' => '',
+            'category' => 'maintenance',
+            'value' => $value,
+            'options' => array(),
+            'actions' => array(),
+        );
+        $states[$key] = $value;
     }
 
     private function appendCycleEntity($resources, &$entities, &$states)
@@ -518,7 +564,8 @@ class LocalThingsMapper
             );
         }
 
-        $key = 'washer_cycle_' . substr(sha1($href), 0, 8);
+        $cycleType = isset($resources['/st/dryercourse/vs/0']) ? 'dryer' : 'washer';
+        $key = $cycleType . '_cycle_' . substr(sha1($href), 0, 8);
         $actions = array();
         if ($selectable) {
             $recipe = array(
@@ -768,6 +815,17 @@ class LocalThingsMapper
         }
         $labels = array(
             'none' => 'Aucun',
+            'auto' => 'Automatique',
+            'automatic' => 'Automatique',
+            'on' => 'Activé',
+            'off' => 'Désactivé',
+            'enabled' => 'Activé',
+            'disabled' => 'Désactivé',
+            'normal' => 'Normal',
+            'eco' => 'Éco',
+            'heat' => 'Chauffage',
+            'fan' => 'Ventilation',
+            'dry' => 'Déshumidification',
             'nospin' => 'Sans essorage',
             'rinsehold' => 'Arrêt cuve pleine',
             'extralow' => 'Très faible',
@@ -859,8 +917,34 @@ class LocalThingsMapper
         return $field === $fallbacks[$href][0] && isset($resources[$fallbacks[$href][1]]);
     }
 
-    private function displayValue($href, $field, $value)
+    private function displayValue($href, $field, $value, $representation = array())
     {
+        if (
+            is_scalar($value)
+            && strpos($href, '/operational/state/') !== false
+            && preg_match('/(?:^|\.)state$/i', $field)
+        ) {
+            return $this->operationalStateLabel($value);
+        }
+        if (is_numeric($value) && preg_match('/cumulative(?:Power|Consumption)$/i', $field)) {
+            $sourceUnit = $this->explicitUnit($field, $representation);
+            if ($sourceUnit === 'kWh') {
+                return (float) $value;
+            }
+            if ($sourceUnit === 'MWh') {
+                return round(((float) $value) * 1000, 3);
+            }
+            if ($sourceUnit === 'J') {
+                return round(((float) $value) / 3600000, 3);
+            }
+            if ($sourceUnit === '' || $sourceUnit === 'Wh') {
+                return round(((float) $value) / 1000, 3);
+            }
+            return (float) $value;
+        }
+        if (is_numeric($value) && preg_match('/instantaneousPower$/i', $field)) {
+            return max(0.0, (float) $value);
+        }
         if ($this->isBinaryField($href, $field, $value)) {
             return $this->toBoolean($value) ? 1 : 0;
         }
@@ -873,7 +957,49 @@ class LocalThingsMapper
         if (is_bool($value)) {
             return $value ? 1 : 0;
         }
+        if (is_string($value)) {
+            return $this->translatedValue($value);
+        }
         return $value;
+    }
+
+    private function translatedValue($value)
+    {
+        $labels = array(
+            'allowed' => 'Autorisé',
+            'notallowed' => 'Non autorisé',
+            'supported' => 'Pris en charge',
+            'notsupported' => 'Non pris en charge',
+            'enable' => 'Activé',
+            'enabled' => 'Activé',
+            'disable' => 'Désactivé',
+            'disabled' => 'Désactivé',
+            'open' => 'Ouvert',
+            'opened' => 'Ouvert',
+            'close' => 'Fermé',
+            'closed' => 'Fermé',
+            'lock' => 'Verrouillé',
+            'locked' => 'Verrouillé',
+            'unlock' => 'Déverrouillé',
+            'unlocked' => 'Déverrouillé',
+            'ok' => 'OK',
+        );
+        $key = strtolower(preg_replace('/[^a-z0-9]/i', '', trim((string) $value)));
+        return isset($labels[$key]) ? $this->tr($labels[$key]) : $value;
+    }
+
+    private function operationalStateLabel($value)
+    {
+        $labels = array(
+            'run' => 'En cours',
+            'pause' => 'En pause',
+            'ready' => 'Prêt',
+            'stop' => 'Arrêté',
+            'finished' => 'Terminé',
+            'complete' => 'Terminé',
+        );
+        $normalized = strtolower(trim((string) $value));
+        return $this->tr($labels[$normalized] ?? (string) $value);
     }
 
     private function entityKey($href, $field)
@@ -898,17 +1024,41 @@ class LocalThingsMapper
             '/washer/vs/0|x.com.samsung.da.supportedWaterTemperature' => 'Températures de lavage disponibles',
             '/washer/vs/0|x.com.samsung.da.supportedSpinLevel' => 'Vitesses d’essorage disponibles',
             '/washer/vs/0|x.com.samsung.da.supportedRinseCycles' => 'Nombres de rinçages disponibles',
+            '/operational/state/vs/0|x.com.samsung.da.state' => 'État',
+            '/operational/state/vs/0|x.com.samsung.da.remainingTime' => 'Temps restant',
+            '/operational/state/vs/0|x.com.samsung.da.progressPercentage' => 'Progression',
+            '/operational/state/0|state' => 'État',
+            '/operational/state/0|remainingTime' => 'Temps restant',
+            '/operational/state/0|progressPercentage' => 'Progression',
+            '/energyconsumption/0|instantaneousPower' => 'Puissance instantanée',
+            '/energyconsumption/0|cumulativePower' => 'Consommation cumulée',
+            '/energyconsumption/0|cumulativeUnit' => 'Unité de consommation',
+            '/energyconsumption/0|cumulativeDate' => 'Date du relevé',
+            '/energyconsumption/0|cumulativeDateUTC' => 'Date UTC du relevé',
         );
         $knownKey = $href . '|' . $field;
         if (isset($known[$knownKey])) {
             return $this->tr($known[$knownKey]);
         }
-        $field = preg_replace('/^x\.com\.samsung\.da\./', '', $field);
-        $field = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $field);
-        $field = str_replace(array('_', '.', '-'), ' ', $field);
+        if (preg_match('/drumCleanProposal/i', $field)) {
+            return $this->tr('Alerte après');
+        }
+        if (preg_match('/washingTimes/i', $field)) {
+            return $this->tr('Lavages depuis le dernier nettoyage');
+        }
+        if (preg_match('/drumCleanLog/i', $field)) {
+            return $this->tr('Historique des nettoyages tambour');
+        }
+        $fieldLabel = $this->translatedIdentifier($field);
         $resource = trim(preg_replace('#/(?:vs/)?\d+$#', '', $href), '/');
-        $resource = str_replace('/', ' ', $resource);
-        return ucfirst(trim($resource . ' - ' . $field));
+        $resourceLabel = $this->translatedIdentifier($resource);
+        if ($fieldLabel === $resourceLabel) {
+            return $fieldLabel;
+        }
+        if (in_array($fieldLabel, array($this->tr('Valeur'), $this->tr('État'), $this->tr('Mode')), true)) {
+            return trim($resourceLabel . ' - ' . $fieldLabel, ' -');
+        }
+        return $fieldLabel !== '' ? $fieldLabel : $resourceLabel;
     }
 
     private function ensureUniqueEntityNames(&$entities)
@@ -938,10 +1088,151 @@ class LocalThingsMapper
             : strtolower($name);
     }
 
+    private function translatedIdentifier($identifier)
+    {
+        $identifier = preg_replace('/^x\.com\.samsung\.da\./i', '', (string) $identifier);
+        $compact = strtolower(preg_replace('/[^a-z0-9]/i', '', $identifier));
+        $phrases = array(
+            'information' => 'Informations de l’appareil',
+            'washer' => 'Lave-linge',
+            'dryer' => 'Sèche-linge',
+            'dishwasher' => 'Lave-vaisselle',
+            'refrigeration' => 'Réfrigérateur',
+            'operationalstate' => 'Fonctionnement',
+            'energyconsumption' => 'Consommation électrique',
+            'wmstatistics' => 'Entretien',
+            'wmsetinfo' => 'Configuration du lave-linge',
+            'course' => 'Programme',
+            'stwashercourse' => 'Catalogue des programmes du lave-linge',
+            'stdryercourse' => 'Catalogue des programmes du sèche-linge',
+            'value' => 'Valeur',
+            'state' => 'État',
+            'mode' => 'Mode',
+            'wmstatus' => 'État du lave-linge',
+            'wmconfig' => 'Configuration du lave-linge',
+            'devicetype' => 'Type d’appareil',
+            'updateallow' => 'Mise à jour autorisée',
+            'laundryouttime' => 'Heure de fin du linge',
+            'seamlesscontrol' => 'Contrôle continu',
+            'kidslockbypass' => 'Contournement de la sécurité enfants',
+            'detergentonce' => 'Dose unique de lessive',
+            'detergentleft' => 'Lessive restante',
+            'detergentbase' => 'Dose de base de lessive',
+            'detergentalarm' => 'Alerte de lessive',
+            'detergenttype' => 'Type de lessive',
+            'detergenttotal' => 'Quantité totale de lessive',
+            'softenerleft' => 'Adoucissant restant',
+            'specialfunction' => 'Fonction spéciale',
+            'laundryplannerusersettime' => 'Heure planifiée',
+            'energylevelset' => 'Niveau d’énergie',
+            'mostused' => 'Programme le plus utilisé',
+            'usagesdb' => 'Base des utilisations',
+            'timesync' => 'Synchronisation de l’heure',
+            'drumcleanproposal' => 'Alerte après',
+            'washingtimes' => 'Lavages depuis le dernier nettoyage',
+            'drumcleanlog' => 'Historique des nettoyages tambour',
+            'watertemperature' => 'Température de lavage',
+            'supportedwatertemperature' => 'Températures de lavage disponibles',
+            'spinlevel' => 'Vitesse d’essorage',
+            'supportedspinlevel' => 'Vitesses d’essorage disponibles',
+            'rinsecycles' => 'Nombre de rinçages',
+            'supportedrinsecycles' => 'Nombres de rinçages disponibles',
+            'drylevel' => 'Niveau de séchage',
+            'remainingtime' => 'Temps restant',
+            'progresstime' => 'Durée de progression',
+            'progresspercentage' => 'Progression',
+            'instantaneouspower' => 'Puissance instantanée',
+            'instantaneouspowerunit' => 'Unité de puissance',
+            'cumulativepower' => 'Consommation cumulée',
+            'cumulativeunit' => 'Unité de consommation',
+            'cumulativedate' => 'Date du relevé',
+            'cumulativedateutc' => 'Date UTC du relevé',
+            'coursetable' => 'Table des programmes',
+            'supportedoptions' => 'Options disponibles',
+            'ismodelsettingpoweronoff' => 'Commande marche/arrêt autorisée',
+            'remotecontrolenabled' => 'Contrôle à distance',
+            'kidslock' => 'Sécurité enfants',
+            'power' => 'Alimentation',
+            'filterlife' => 'Durée de vie du filtre',
+            'filterstatus' => 'État du filtre',
+            'filterremind' => 'Rappel du filtre',
+            'voltage' => 'Tension',
+            'electriccurrent' => 'Intensité',
+            'frequency' => 'Fréquence',
+            'pressure' => 'Pression',
+            'battery' => 'Batterie',
+            'brightness' => 'Luminosité',
+            'humidity' => 'Humidité',
+            'temperature' => 'Température',
+            'flowrate' => 'Débit',
+            'waterconsumption' => 'Consommation d’eau',
+            'weight' => 'Poids',
+            'co2' => 'CO₂',
+            'voc' => 'COV',
+        );
+        if (isset($phrases[$compact])) {
+            return $this->tr($phrases[$compact]);
+        }
+
+        $words = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $identifier);
+        $words = preg_split('/[^\pL\pN]+/u', $words, -1, PREG_SPLIT_NO_EMPTY);
+        $tokens = array(
+            'air' => 'air', 'alarm' => 'alerte', 'allow' => 'autorisation',
+            'available' => 'disponible', 'base' => 'base', 'child' => 'enfants',
+            'clean' => 'nettoyage', 'control' => 'contrôle', 'cooktop' => 'table de cuisson',
+            'count' => 'nombre', 'cumulative' => 'cumulée', 'current' => 'actuelle',
+            'cycle' => 'programme', 'date' => 'date', 'delay' => 'délai',
+            'desired' => 'souhaitée', 'detergent' => 'lessive', 'device' => 'appareil',
+            'dishwasher' => 'lave-vaisselle', 'door' => 'porte', 'dryer' => 'sèche-linge',
+            'enabled' => 'activé', 'energy' => 'énergie', 'error' => 'erreur',
+            'fan' => 'ventilation', 'filter' => 'filtre', 'fridge' => 'réfrigérateur',
+            'hood' => 'hotte', 'kids' => 'enfants',
+            'level' => 'niveau', 'lock' => 'verrouillage', 'log' => 'historique',
+            'mode' => 'mode', 'open' => 'ouverture', 'option' => 'option',
+            'oven' => 'four', 'power' => 'puissance', 'quality' => 'qualité',
+            'refrigerator' => 'réfrigérateur', 'remaining' => 'restant',
+            'remote' => 'distance', 'rinse' => 'rinçage', 'set' => 'réglage',
+            'softener' => 'adoucissant', 'speed' => 'vitesse', 'spin' => 'essorage',
+            'state' => 'état', 'status' => 'état', 'supported' => 'disponible',
+            'target' => 'cible', 'temperature' => 'température', 'time' => 'temps',
+            'total' => 'total',
+            'type' => 'type', 'unit' => 'unité', 'update' => 'mise à jour',
+            'usage' => 'utilisation', 'value' => 'valeur', 'washer' => 'lave-linge',
+            'washing' => 'lavage', 'water' => 'eau',
+        );
+        $translated = array();
+        foreach ($words as $word) {
+            $key = strtolower($word);
+            if (in_array($key, array('x', 'com', 'samsung', 'da', 'vs', 'st'), true) || ctype_digit($key)) {
+                continue;
+            }
+            $translated[] = isset($tokens[$key]) ? $this->tr($tokens[$key]) : $word;
+        }
+        return ucfirst(trim(implode(' ', $translated)));
+    }
+
     private function optionName($prefix)
     {
-        $name = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', (string) $prefix);
-        return ucfirst(str_replace(array('_', '-'), ' ', $name));
+        $names = array(
+            'upperlamp' => 'Éclairage supérieur',
+            'sound' => 'Son',
+            'fastpreheat' => 'Préchauffage rapide',
+            'naturalsteam' => 'Vapeur naturelle',
+            'energysaving' => 'Économie d’énergie',
+            'burneronalert' => 'Alerte foyer allumé',
+            'spi' => 'Mode intelligent',
+            'autoclean' => 'Nettoyage automatique',
+            'airmonitoring' => 'Surveillance de l’air',
+            'stormwashzone' => 'Zone de lavage intensif',
+            'autodoorrelease' => 'Ouverture automatique de la porte',
+            'bubblesoak' => 'Bubble Soak',
+            'addwash' => 'Add Wash',
+            'prewashsetting' => 'Prélavage',
+            'intensivesetting' => 'Lavage intensif',
+            'energykw' => 'Consommation du cycle',
+        );
+        $key = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $prefix));
+        return isset($names[$key]) ? $this->tr($names[$key]) : $this->translatedIdentifier($prefix);
     }
 
     private function subtype($href, $field, $value, $actions = array())
@@ -971,16 +1262,50 @@ class LocalThingsMapper
         return 'raw';
     }
 
-    private function unit($href, $field)
+    private function unit($href, $field, $representation = array(), $value = null)
     {
+        if (preg_match('/unit$/i', (string) $field)) {
+            return '';
+        }
+        if ($value !== null && !is_numeric($value)) {
+            return '';
+        }
+        $explicit = $this->explicitUnit($field, $representation);
+        if (preg_match('/cumulative(?:Power|Consumption)/i', $field)) {
+            return in_array($explicit, array('Wh', 'kWh', 'MWh', 'J', ''), true) ? 'kWh' : $explicit;
+        }
+        if ($explicit !== '') {
+            return $explicit;
+        }
         if (stripos($field, 'supported') === false && preg_match('/temperature/i', $field)) {
             return '°C';
         }
-        if (preg_match('/humidity/i', $field)) {
+        if (preg_match('/(?:humidity|percentage|percent|battery|position|brightness|dimmer)/i', $field)) {
             return '%';
         }
-        if (preg_match('/cumulative(?:Power|Consumption)/i', $field)) {
-            return 'Wh';
+        if (preg_match('/voltage/i', $field)) {
+            return 'V';
+        }
+        if (preg_match('/(?:electricCurrent|amperage)/i', $field)) {
+            return 'A';
+        }
+        if (preg_match('/frequency/i', $field)) {
+            return 'Hz';
+        }
+        if (preg_match('/pressure/i', $field)) {
+            return 'hPa';
+        }
+        if (preg_match('/(?:pm1|pm2(?:\.5)?|pm10|dust)/i', $field)) {
+            return 'µg/m³';
+        }
+        if (preg_match('/co2/i', $field)) {
+            return 'ppm';
+        }
+        if (preg_match('/(?:voc|tvoc)/i', $field)) {
+            return 'ppb';
+        }
+        if (preg_match('/(?:noise|soundLevel)/i', $field)) {
+            return 'dB';
         }
         if (
             preg_match('/power$/i', $field)
@@ -992,10 +1317,97 @@ class LocalThingsMapper
         if (stripos($field, 'supported') === false && preg_match('/spinLevel/i', $field)) {
             return 'tr/min';
         }
-        if (preg_match('/percentage/i', $field)) {
-            return '%';
+        if (preg_match('/(?:rpm|rotationSpeed)/i', $field)) {
+            return 'tr/min';
+        }
+        if (preg_match('/(?:drumCleanProposal|washingTimes)/i', $field)) {
+            return $this->tr('lavages');
+        }
+        if (preg_match('/openTime$/i', $field)) {
+            return 'ms';
+        }
+        if (preg_match('/(?:duration|remainingTime|elapsedTime)$/i', $field)) {
+            return preg_match('/(?:milli|msec|Ms$)/i', $field) ? 'ms' : 's';
+        }
+        if (preg_match('/(?:waterConsumption|waterVolume|volume)$/i', $field)) {
+            return 'L';
+        }
+        if (preg_match('/(?:flow|flowRate)$/i', $field)) {
+            return 'L/min';
+        }
+        if (preg_match('/(?:weight|mass)$/i', $field)) {
+            return 'kg';
         }
         return '';
+    }
+
+    private function explicitUnit($field, $representation)
+    {
+        if (!is_array($representation)) {
+            return '';
+        }
+        $fieldKey = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $field));
+        $fieldKey = preg_replace('/^xcomsamsungda/', '', $fieldKey);
+        $candidateKeys = array('unit');
+        if (strpos($fieldKey, 'instantaneouspower') !== false) {
+            $candidateKeys[] = 'instantaneouspowerunit';
+            $candidateKeys[] = 'powerunit';
+        }
+        if (strpos($fieldKey, 'cumulative') !== false) {
+            $candidateKeys[] = 'cumulativeunit';
+            $candidateKeys[] = 'cumulativepowerunit';
+        }
+        if (strpos($fieldKey, 'temperature') !== false) {
+            $candidateKeys[] = 'temperatureunit';
+        }
+        $candidateKeys[] = $fieldKey . 'unit';
+        foreach ($representation as $candidate => $unit) {
+            if (!is_scalar($unit)) {
+                continue;
+            }
+            $candidateKey = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $candidate));
+            $candidateKey = preg_replace('/^xcomsamsungda/', '', $candidateKey);
+            if (in_array($candidateKey, $candidateKeys, true)) {
+                return $this->normalizeUnit($unit);
+            }
+        }
+        return '';
+    }
+
+    private function normalizeUnit($unit)
+    {
+        $raw = trim((string) $unit);
+        $key = strtolower(str_replace(array(' ', '_', '-', '°'), '', $raw));
+        $units = array(
+            'c' => '°C', 'celsius' => '°C', 'degc' => '°C',
+            'f' => '°F', 'fahrenheit' => '°F', 'degf' => '°F',
+            'percent' => '%', 'percentage' => '%', '%' => '%',
+            'w' => 'W', 'watt' => 'W', 'watts' => 'W',
+            'kw' => 'kW', 'kilowatt' => 'kW', 'kilowatts' => 'kW',
+            'wh' => 'Wh', 'watthour' => 'Wh', 'watthours' => 'Wh',
+            'kwh' => 'kWh', 'kilowatthour' => 'kWh', 'kilowatthours' => 'kWh',
+            'mwh' => 'MWh', 'megawatthour' => 'MWh',
+            'v' => 'V', 'volt' => 'V', 'volts' => 'V',
+            'mv' => 'mV',
+            'a' => 'A', 'amp' => 'A', 'amps' => 'A', 'ampere' => 'A',
+            'ma' => 'mA', 'va' => 'VA', 'var' => 'VAr',
+            'hz' => 'Hz', 'hertz' => 'Hz',
+            'pa' => 'Pa', 'hpa' => 'hPa', 'bar' => 'bar',
+            's' => 's', 'sec' => 's', 'second' => 's', 'seconds' => 's',
+            'ms' => 'ms', 'millisecond' => 'ms', 'milliseconds' => 'ms',
+            'min' => 'min', 'minute' => 'min', 'minutes' => 'min',
+            'h' => 'h', 'hour' => 'h', 'hours' => 'h',
+            'rpm' => 'tr/min', 'l' => 'L', 'liter' => 'L', 'litre' => 'L',
+            'l/min' => 'L/min', 'kg' => 'kg', 'db' => 'dB',
+            'dbm' => 'dBm', 'ppm' => 'ppm', 'ppb' => 'ppb',
+            'j' => 'J', 'joule' => 'J', 'lux' => 'lux',
+            'm3' => 'm³', 'm3/h' => 'm³/h',
+            'ug/m3' => 'µg/m³', 'µg/m³' => 'µg/m³',
+        );
+        if (isset($units[$key])) {
+            return $units[$key];
+        }
+        return preg_match('/^[\pL\d°%µμ\/³²·._-]{1,16}$/u', $raw) ? $raw : '';
     }
 
     private function isBinaryField($href, $field, $value)
@@ -1072,6 +1484,10 @@ class LocalThingsMapper
 
     private function tr($text)
     {
-        return function_exists('__') ? __($text, __FILE__) : $text;
+        if (!function_exists('__')) {
+            return $text;
+        }
+        $translated = __($text, __FILE__);
+        return trim((string) $translated) === '' ? $text : $translated;
     }
 }

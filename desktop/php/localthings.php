@@ -152,6 +152,18 @@ $eqLogics = eqLogic::byType($plugin->getId());
                                     </label>
                                 </div>
                             </div>
+                            <div class="form-group">
+                                <label class="col-sm-4 control-label">
+                                    {{Widget}}
+                                    <sup><i class="fas fa-question-circle" title="{{Le widget LocalThings organise les commandes natives Jeedom selon le type de l’appareil.}}"></i></sup>
+                                </label>
+                                <div class="col-sm-7">
+                                    <select class="eqLogicAttr form-control" data-l1key="display" data-l2key="widgetTmpl">
+                                        <option value="0">{{Widget du core Jeedom}}</option>
+                                        <option value="1">{{Widget LocalThings}}</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
                         <div class="col-lg-6">
                             <legend><i class="fas fa-info-circle"></i> {{Informations locales}}</legend>
@@ -174,6 +186,14 @@ $eqLogics = eqLogic::byType($plugin->getId());
                                     </div>
                                 </div>
                             <?php } ?>
+                            <div class="form-group">
+                                <label class="col-sm-4 control-label">{{Communication}}</label>
+                                <div class="col-sm-8">
+                                    <button type="button" class="btn btn-default" id="bt_testCommunicationLocalthings">
+                                        <i class="fas fa-satellite-dish"></i> {{Tester la communication}}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </fieldset>
                 </form>

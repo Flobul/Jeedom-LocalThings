@@ -12,11 +12,12 @@ require_once __DIR__ . '/../../../../core/php/core.inc.php';
 require_once __DIR__ . '/LocalThingsProtocol.php';
 require_once __DIR__ . '/LocalThingsTransport.php';
 require_once __DIR__ . '/LocalThingsMapper.php';
+require_once __DIR__ . '/LocalThingsWidget.php';
 require_once __DIR__ . '/LocalThingsClient.php';
 
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.2.1';
+    public static $_pluginVersion = '0.4.4';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     private static function resourcePath()
@@ -197,6 +198,12 @@ class localthings extends eqLogic
             throw new InvalidArgumentException(__('Identifiant d’appareil invalide', __FILE__));
         }
         $eqLogic = self::byDeviceId($deviceId);
+        if (!is_object($eqLogic)) {
+            $eqLogic = self::byEndpoint(
+                (string) ($device['host'] ?? ''),
+                (int) ($device['port'] ?? 0)
+            );
+        }
         $isNew = !is_object($eqLogic);
         if ($isNew) {
             $eqLogic = new self();
@@ -240,6 +247,22 @@ class localthings extends eqLogic
     {
         foreach (self::byType(__CLASS__) as $eqLogic) {
             if ((string) $eqLogic->getConfiguration('device_id') === (string) $deviceId) {
+                return $eqLogic;
+            }
+        }
+        return null;
+    }
+
+    private static function byEndpoint($host, $port)
+    {
+        if ($host === '' || $port === 0) {
+            return null;
+        }
+        foreach (self::byType(__CLASS__) as $eqLogic) {
+            if (
+                (string) $eqLogic->getConfiguration('host') === (string) $host
+                && (int) $eqLogic->getConfiguration('port') === (int) $port
+            ) {
                 return $eqLogic;
             }
         }
@@ -403,17 +426,17 @@ class localthings extends eqLogic
                     $command->setIsVisible(1);
                 }
                 self::releaseCommandName($nameRegistry, $command);
-                $command->setName(
-                    self::reserveCommandName(
-                        $nameRegistry,
-                        $infoName . ' - ' . (string) ($action['name'] ?? $action['key']),
-                        $actionLogicalId
-                    )
-                );
                 $actionSubtype = (string) ($action['subtype'] ?? 'other');
                 if (!in_array($actionSubtype, array('other', 'slider', 'select', 'message', 'color'), true)) {
                     $actionSubtype = 'other';
                 }
+                $command->setName(
+                    self::reserveCommandName(
+                        $nameRegistry,
+                        self::generatedActionName($entityKey, $infoName, $action, $actionSubtype),
+                        $actionLogicalId
+                    )
+                );
                 $command->setSubType($actionSubtype);
                 $command->setValue($info->getId());
                 $command->setUnite((string) ($action['unit'] ?? ''));
@@ -480,6 +503,22 @@ class localthings extends eqLogic
         // Some firmwares return temporary {"href": ...} stubs in /device/0.
         // Keep previously discovered commands so one partial poll cannot
         // erase a working equipment schema.
+    }
+
+    private static function generatedActionName($entityKey, $infoName, $action, $subtype)
+    {
+        $actionName = (string) ($action['name'] ?? $action['key'] ?? __('Action', __FILE__));
+        if (in_array($subtype, array('select', 'slider'), true)) {
+            return $infoName;
+        }
+        if (strpos((string) $entityKey, 'operational_controls_') === 0) {
+            return $actionName;
+        }
+        $fixedValue = $action['fixed_value'] ?? null;
+        if (is_bool($fixedValue)) {
+            return __($fixedValue ? 'Activer' : 'Désactiver', __FILE__) . ' ' . $infoName;
+        }
+        return $infoName . ' - ' . $actionName;
     }
 
     private static function removeDeprecatedGeneratedCommands($eqLogic, $processedEntityKeys)
@@ -564,33 +603,62 @@ class localthings extends eqLogic
     public static function health()
     {
         $dependency = self::dependancy_info();
+        $transport = self::transportStatus();
         $certificate = self::certificateStatus();
         $equipment = self::byType(__CLASS__);
         $connected = 0;
+        $enabled = 0;
         foreach ($equipment as $eqLogic) {
+            if (!$eqLogic->getIsEnable()) {
+                continue;
+            }
+            $enabled++;
             $command = $eqLogic->getCmd('info', 'connected');
             if (is_object($command) && (int) $command->execCmd() === 1) {
                 $connected++;
             }
         }
+        $certificateExpires = !empty($certificate['expires']) ? strtotime($certificate['expires']) : false;
+        $certificateOk = !empty($certificate['configured'])
+            && ($certificateExpires === false || $certificateExpires > time());
+        $certificateResult = $certificateOk ? 'OK' : 'NOK';
+        if ($certificateExpires !== false) {
+            $certificateResult .= ' (' . date('Y-m-d', $certificateExpires) . ')';
+        }
+        $pollInterval = max(1, min(1440, (int) config::byKey('poll_interval', __CLASS__, 5)));
         return array(
             array(
                 'test' => __('Transport OpenSSL DTLS', __FILE__),
-                'result' => strtoupper($dependency['state']),
+                'result' => strtoupper($dependency['state'])
+                    . (!empty($transport['path']) ? ' - ' . $transport['path'] : ''),
                 'advice' => $dependency['state'] === 'ok' ? '' : __('Relancez les dépendances', __FILE__),
                 'state' => $dependency['state'] === 'ok',
             ),
             array(
+                'test' => __('Fonction PHP proc_open', __FILE__),
+                'result' => !empty($transport['proc_open']) ? 'OK' : 'NOK',
+                'advice' => !empty($transport['proc_open']) ? '' : __('Activez proc_open dans PHP', __FILE__),
+                'state' => !empty($transport['proc_open']),
+            ),
+            array(
                 'test' => __('Certificats DTLS', __FILE__),
-                'result' => !empty($certificate['configured']) ? 'OK' : 'NOK',
-                'advice' => !empty($certificate['configured']) ? '' : __('Configurez les certificats dans la page du plugin', __FILE__),
-                'state' => !empty($certificate['configured']),
+                'result' => $certificateResult,
+                'advice' => $certificateOk ? '' : __('Configurez les certificats dans la page du plugin', __FILE__),
+                'state' => $certificateOk,
             ),
             array(
                 'test' => __('Appareils connectés', __FILE__),
-                'result' => $connected . ' / ' . count($equipment),
+                'result' => $connected . ' / ' . $enabled,
+                'advice' => $enabled > 0 && $connected === 0
+                    ? __('Testez la communication depuis la page de l’équipement', __FILE__)
+                    : '',
+                'state' => $connected > 0 || $enabled === 0,
+            ),
+            array(
+                'test' => __('Rafraîchissement automatique', __FILE__),
+                'result' => $pollInterval . ' min',
                 'advice' => '',
-                'state' => $connected > 0 || count($equipment) === 0,
+                'state' => true,
             ),
         );
     }
@@ -615,6 +683,52 @@ class localthings extends eqLogic
         }
     }
 
+    public function testCommunication()
+    {
+        $host = trim((string) $this->getConfiguration('host'));
+        $port = (int) $this->getConfiguration('port');
+        if ($host === '' || $port === 0) {
+            throw new RuntimeException(__('Adresse LocalThings absente', __FILE__));
+        }
+        $started = microtime(true);
+        try {
+            $snapshot = self::deviceClient()->refresh($host, $port);
+            if (!is_array($snapshot) || empty($snapshot['device'])) {
+                throw new RuntimeException(__('Réponse LocalThings invalide', __FILE__));
+            }
+            $duration = (int) round((microtime(true) - $started) * 1000);
+            $lastCommunication = date('Y-m-d H:i:s');
+            $this->checkAndUpdateCmd('connected', 1);
+            $this->setConfiguration('last_communication', $lastCommunication);
+            $this->setConfiguration('last_error', '');
+            $this->save(true);
+            log::add(
+                __CLASS__,
+                'info',
+                '[Test] Communication réussie avec ' . $this->getHumanName() . ' en ' . $duration . ' ms'
+            );
+            return array(
+                'success' => true,
+                'duration_ms' => $duration,
+                'last_communication' => $lastCommunication,
+                'last_error' => '',
+                'message' => __('Communication avec l’appareil réussie', __FILE__)
+                    . ' (' . $duration . ' ms)',
+            );
+        } catch (Exception $exception) {
+            $this->checkAndUpdateCmd('connected', 0);
+            $this->setConfiguration('last_error', $exception->getMessage());
+            $this->save(true);
+            log::add(
+                __CLASS__,
+                'warning',
+                '[Test] Échec de communication avec ' . $this->getHumanName()
+                . ' : ' . $exception->getMessage()
+            );
+            throw $exception;
+        }
+    }
+
     public function applyCommandResult($result)
     {
         if (!is_array($result)) {
@@ -628,6 +742,385 @@ class localthings extends eqLogic
         $this->setConfiguration('last_refresh', time());
         $this->setConfiguration('last_error', '');
         $this->save(true);
+    }
+
+    /**
+     * Génère le widget personnalisé en organisant les widgets de commandes du
+     * core dans des pages compactes selon le type de l'appareil.
+     *
+     * @param string $_version Version d'affichage Jeedom.
+     * @return string HTML du widget.
+     */
+    public function toHtml($_version = 'dashboard')
+    {
+        if ((int) $this->getDisplay('widgetTmpl', 0) !== 1) {
+            return parent::toHtml($_version);
+        }
+
+        $version = jeedom::versionAlias($_version);
+        if (!in_array($version, array('dashboard', 'mobile'), true)) {
+            return parent::toHtml($_version);
+        }
+        $replace = $this->preToHtml($_version);
+        if (!is_array($replace)) {
+            return $replace;
+        }
+
+        $profile = LocalThingsWidget::profile($this->getConfiguration('device_type', 'unknown'));
+        $sections = array(
+            'status' => array(),
+            'settings' => array(),
+            'controls' => array(),
+            'maintenance' => array(),
+            'energy' => array(),
+            'details' => array(),
+        );
+        $statusCandidates = array();
+        $actions = array();
+        $actionEntityKeys = array();
+
+        foreach ($this->getCmd('action') as $command) {
+            if (!$command->getIsVisible()) {
+                continue;
+            }
+            $entityKey = (string) $command->getConfiguration('entityKey', '');
+            $group = LocalThingsWidget::group(
+                $profile['type'],
+                $entityKey,
+                $command->getType(),
+                $command->getSubType(),
+                $command->getConfiguration('entityCategory', ''),
+                $command->getName()
+            );
+            if ($group === 'refresh') {
+                continue;
+            }
+            if ($group === 'hidden') {
+                continue;
+            }
+            if (!isset($sections[$group])) {
+                $group = 'controls';
+            }
+            $actions[] = array('command' => $command, 'group' => $group);
+            if ($entityKey !== '') {
+                $actionEntityKeys[$entityKey] = true;
+            }
+        }
+
+        foreach ($this->getCmd('info') as $command) {
+            if (!$command->getIsVisible()) {
+                continue;
+            }
+            $entityKey = (string) $command->getConfiguration('entityKey', '');
+            $group = LocalThingsWidget::group(
+                $profile['type'],
+                $entityKey,
+                $command->getType(),
+                $command->getSubType(),
+                $command->getConfiguration('entityCategory', ''),
+                $command->getName()
+            );
+            if ($group === 'hidden' || isset($actionEntityKeys[$entityKey])) {
+                continue;
+            }
+            if (!isset($sections[$group])) {
+                $group = 'details';
+            }
+            if ($group === 'status') {
+                $statusCandidates[] = $command;
+                continue;
+            }
+            $sections[$group][] = $command;
+        }
+
+        usort($statusCandidates, function ($left, $right) use ($profile) {
+            $leftPriority = LocalThingsWidget::statusPriority(
+                $profile['type'],
+                $left->getConfiguration('entityKey', ''),
+                $left->getName()
+            );
+            $rightPriority = LocalThingsWidget::statusPriority(
+                $profile['type'],
+                $right->getConfiguration('entityKey', ''),
+                $right->getName()
+            );
+            if ($leftPriority === $rightPriority) {
+                return (int) $left->getId() <=> (int) $right->getId();
+            }
+            return $leftPriority <=> $rightPriority;
+        });
+        $statusSlots = array();
+        foreach ($statusCandidates as $command) {
+            $slot = LocalThingsWidget::statusSlot(
+                $command->getConfiguration('entityKey', ''),
+                $command->getName()
+            );
+            if ($slot !== '' && count($sections['status']) < 3 && !isset($statusSlots[$slot])) {
+                $sections['status'][] = $command;
+                $statusSlots[$slot] = true;
+            }
+        }
+
+        foreach ($actions as $item) {
+            $sections[$item['group']][] = $item['command'];
+        }
+
+        $renderedSections = array();
+        foreach ($sections as $section => $commands) {
+            usort($commands, function ($left, $right) use ($profile, $section) {
+                if ($section === 'status') {
+                    $leftPriority = LocalThingsWidget::statusPriority(
+                        $profile['type'],
+                        $left->getConfiguration('entityKey', ''),
+                        $left->getName()
+                    );
+                    $rightPriority = LocalThingsWidget::statusPriority(
+                        $profile['type'],
+                        $right->getConfiguration('entityKey', ''),
+                        $right->getName()
+                    );
+                } else {
+                    $leftPriority = LocalThingsWidget::priority(
+                        $profile['type'],
+                        $left->getConfiguration('entityKey', ''),
+                        $left->getName()
+                    );
+                    $rightPriority = LocalThingsWidget::priority(
+                        $profile['type'],
+                        $right->getConfiguration('entityKey', ''),
+                        $right->getName()
+                    );
+                }
+                if ($leftPriority === $rightPriority) {
+                    return (int) $left->getId() <=> (int) $right->getId();
+                }
+                return $leftPriority <=> $rightPriority;
+            });
+            $commands = $this->deduplicateWidgetCommands($commands, $section);
+            $renderedSections[$section] = $this->renderWidgetCommands(
+                $commands,
+                $_version,
+                $section,
+                $profile['type']
+            );
+        }
+
+        $refresh = $this->getCmd('action', 'refresh');
+        $replace['#refresh_id#'] = is_object($refresh) ? (int) $refresh->getId() : '';
+        $replace['#refresh_display#'] = is_object($refresh) && $refresh->getIsVisible() ? 'inline-block' : 'none';
+        $health = $this->getCmd('info', 'connected');
+        $healthValue = is_object($health) ? (int) $health->execCmd() : 0;
+        $replace['#health_id#'] = is_object($health) ? (int) $health->getId() : '';
+        $replace['#health_display#'] = is_object($health) && $health->getIsVisible() ? 'inline-block' : 'none';
+        $replace['#health_online#'] = $healthValue === 1 ? 'true' : 'false';
+        $replace['#health_status#'] = htmlspecialchars(
+            __($healthValue === 1 ? 'En ligne' : 'Hors ligne', __FILE__),
+            ENT_QUOTES,
+            'UTF-8'
+        );
+        $replace['#health_icon#'] = $healthValue === 1 ? 'fas fa-link' : 'fas fa-unlink';
+        $replace['#health_color#'] = $healthValue === 1 ? '#4caf50' : '#d9534f';
+        $replace['#device_type#'] = htmlspecialchars($profile['type'], ENT_QUOTES, 'UTF-8');
+        $replace['#settings_title#'] = htmlspecialchars(__($profile['settings_title'], __FILE__), ENT_QUOTES, 'UTF-8');
+        $replace['#status_commands#'] = $renderedSections['status'];
+        $replace['#settings_commands#'] = $renderedSections['settings'];
+        $replace['#control_commands#'] = $renderedSections['controls'];
+        $replace['#maintenance_commands#'] = $renderedSections['maintenance'];
+        $replace['#energy_commands#'] = $renderedSections['energy'];
+        $replace['#detail_commands#'] = $renderedSections['details'];
+        foreach ($renderedSections as $section => $content) {
+            $replace['#' . $section . '_display#'] = $content === ''
+                ? 'none'
+                : ($section === 'status' ? 'flex' : 'block');
+        }
+
+        $templateName = 'localthings.device.template';
+        $template = getTemplate('core', $version, $templateName, __CLASS__);
+        if (!is_string($template) || $template === '') {
+            return parent::toHtml($_version);
+        }
+        $html = template_replace($replace, $template);
+        return translate::exec(
+            $html,
+            'plugins/localthings/core/template/' . $version . '/' . $templateName . '.html'
+        );
+    }
+
+    private function renderWidgetCommands($commands, $version, $group, $deviceType)
+    {
+        $rendered = '';
+        $renderedToggleKeys = array();
+        foreach ($commands as $command) {
+            $fixedValue = json_decode((string) $command->getConfiguration('fixedValue', 'null'));
+            $entityKey = (string) $command->getConfiguration('entityKey', '');
+            if ($command->getType() === 'action' && is_bool($fixedValue) && $entityKey !== '') {
+                if (isset($renderedToggleKeys[$entityKey])) {
+                    continue;
+                }
+                $toggleCommands = array();
+                foreach ($commands as $candidate) {
+                    $candidateFixedValue = json_decode((string) $candidate->getConfiguration('fixedValue', 'null'));
+                    if (
+                        $candidate->getType() === 'action'
+                        && is_bool($candidateFixedValue)
+                        && (string) $candidate->getConfiguration('entityKey', '') === $entityKey
+                    ) {
+                        $toggleCommands[] = $candidate;
+                    }
+                }
+                $rendered .= $this->renderWidgetToggleCommands(
+                    $toggleCommands,
+                    $version,
+                    $group,
+                    $deviceType
+                );
+                $renderedToggleKeys[$entityKey] = true;
+                continue;
+            }
+            $rendered .= $this->renderWidgetCommand($command, $version, $group, $deviceType);
+        }
+        return $rendered;
+    }
+
+    private function deduplicateWidgetCommands($commands, $section)
+    {
+        if (!in_array($section, array('maintenance', 'energy', 'details'), true)) {
+            return $commands;
+        }
+        $seen = array();
+        $filtered = array();
+        foreach ($commands as $command) {
+            $entityKey = (string) $command->getConfiguration('entityKey', '');
+            if ($section === 'maintenance') {
+                $role = LocalThingsWidget::maintenanceRole($entityKey, $command->getName());
+            } elseif ($section === 'energy') {
+                $role = LocalThingsWidget::energyRole($entityKey, $command->getName());
+            } else {
+                $role = LocalThingsWidget::detailRole($entityKey, $command->getName());
+            }
+            $roleKey = $section === 'details' ? $command->getType() . ':' . $role : $role;
+            if ($role !== '' && isset($seen[$roleKey]) && $seen[$roleKey] !== $entityKey) {
+                continue;
+            }
+            if ($role !== '') {
+                $seen[$roleKey] = $entityKey;
+            }
+            $filtered[] = $command;
+        }
+        return $filtered;
+    }
+
+    private function renderWidgetToggleCommands($commands, $version, $group, $deviceType)
+    {
+        if (count($commands) === 0) {
+            return '';
+        }
+        $onCommand = null;
+        $offCommand = null;
+        foreach ($commands as $command) {
+            $fixedValue = json_decode((string) $command->getConfiguration('fixedValue', 'null'));
+            if ($fixedValue === true) {
+                $onCommand = $command;
+            } elseif ($fixedValue === false) {
+                $offCommand = $command;
+            }
+        }
+        if (is_object($onCommand) && is_object($offCommand)) {
+            $stateId = (int) $onCommand->getValue();
+            $stateCommand = $stateId > 0 ? cmd::byId($stateId) : null;
+            $currentValue = is_object($stateCommand) ? $stateCommand->execCmd() : 0;
+            $checked = in_array(
+                strtolower(trim((string) $currentValue)),
+                array('1', 'true', 'on', 'enable', 'enabled', 'yes'),
+                true
+            );
+            $stateLabel = __($checked ? 'Activé' : 'Désactivé', __FILE__);
+            $html = '<label class="localthings-widget-switch">'
+                . '<input type="checkbox" class="localthings-toggle-input" role="switch"'
+                . ' data-on-cmd_id="' . (int) $onCommand->getId() . '"'
+                . ' data-off-cmd_id="' . (int) $offCommand->getId() . '"'
+                . ' data-state-cmd_id="' . $stateId . '"'
+                . ' data-on-label="' . htmlspecialchars(__('Activé', __FILE__), ENT_QUOTES, 'UTF-8') . '"'
+                . ' data-off-label="' . htmlspecialchars(__('Désactivé', __FILE__), ENT_QUOTES, 'UTF-8') . '"'
+                . ' aria-checked="' . ($checked ? 'true' : 'false') . '"'
+                . ($checked ? ' checked' : '') . '>'
+                . '<span class="localthings-widget-switch-track" aria-hidden="true">'
+                . '<span class="localthings-widget-switch-thumb"></span></span>'
+                . '<span class="localthings-widget-switch-state">'
+                . htmlspecialchars($stateLabel, ENT_QUOTES, 'UTF-8') . '</span></label>';
+            return $this->renderWidgetCommandFrame(
+                $onCommand,
+                $html,
+                $group,
+                $deviceType,
+                'toggle'
+            );
+        }
+        $html = '<div class="localthings-widget-toggle-actions">';
+        foreach ($commands as $command) {
+            $commandHtml = $command->toHtml($version);
+            if (is_string($commandHtml)) {
+                $html .= $commandHtml;
+            }
+        }
+        $html .= '</div>';
+        return $this->renderWidgetCommandFrame(
+            reset($commands),
+            $html,
+            $group,
+            $deviceType,
+            'toggle'
+        );
+    }
+
+    private function renderWidgetCommand($command, $version, $group, $deviceType)
+    {
+        $html = $command->toHtml($version);
+        if (!is_string($html) || $html === '') {
+            return '';
+        }
+        return $this->renderWidgetCommandFrame(
+            $command,
+            $html,
+            $group,
+            $deviceType,
+            $command->getSubType()
+        );
+    }
+
+    private function renderWidgetCommandFrame($command, $html, $group, $deviceType, $subType)
+    {
+        $subType = preg_replace('/[^a-z0-9_-]/i', '', (string) $subType);
+        if (
+            $command->getType() === 'info'
+            && $command->getSubType() === 'numeric'
+            && (int) $command->getIsHistorized() === 1
+        ) {
+            $html = LocalThingsWidget::historizedCommandHtml($html, $command->getId());
+        }
+        $presentation = LocalThingsWidget::presentation(
+            $deviceType,
+            $command->getConfiguration('entityKey', ''),
+            $command->getType(),
+            $group,
+            $command->getName()
+        );
+        $visual = '';
+        if ($presentation['asset'] !== '') {
+            $visual = '<span class="localthings-widget-command-icon"><img src="plugins/localthings/core/template/img/'
+                . htmlspecialchars($presentation['asset'], ENT_QUOTES, 'UTF-8') . '" alt=""></span>';
+        } elseif ($presentation['icon'] !== '') {
+            $visual = '<span class="localthings-widget-command-icon"><i class="'
+                . htmlspecialchars($presentation['icon'], ENT_QUOTES, 'UTF-8') . '"></i></span>';
+        }
+        $label = $presentation['label'] === ''
+            ? ''
+            : '<span class="localthings-widget-command-label">'
+                . htmlspecialchars(__($presentation['label'], __FILE__), ENT_QUOTES, 'UTF-8') . '</span>';
+        $visualClass = $visual !== '' || $label !== '' ? ' localthings-widget-command-presented' : '';
+        return '<div class="localthings-widget-command localthings-widget-command-' . $subType . $visualClass
+            . '" data-command-group="' . $group . '" data-cmd_id="' . (int) $command->getId() . '">'
+            . $visual . '<div class="localthings-widget-command-content">' . $label . $html . '</div></div>';
     }
 }
 

@@ -41,6 +41,11 @@ mapperCheck(
 );
 $mapped = $mapper->map($resources);
 mapperCheck(count($mapped['entities']) > 5, 'entity count');
+$mappedByName = array();
+foreach ($mapped['entities'] as $entity) {
+    $mappedByName[$entity['name']] = $entity;
+}
+mapperCheck($mappedByName['État']['value'] === 'Prêt', 'readable operational state');
 
 $actionCount = 0;
 $recipes = array();
@@ -89,11 +94,11 @@ mapperCheck(
     'duplicate command names are disambiguated'
 );
 mapperCheck(
-    in_array('Operational state - remaining Time', $entityNames, true),
+    in_array('Temps restant', $entityNames, true),
     'first duplicate keeps its readable name'
 );
 mapperCheck(
-    in_array('Operational state - remaining Time (2)', $entityNames, true),
+    in_array('Temps restant (2)', $entityNames, true),
     'second duplicate gets a stable suffix'
 );
 
@@ -134,7 +139,7 @@ $washerResources = array(
         'x.com.samsung.da.supportedRinseCycles' => array('0', '1', '2', '3'),
     ),
     '/course/vs/0' => array(
-        'x.com.samsung.da.options' => array('Course_D0', 'BubbleSoak_Off'),
+        'x.com.samsung.da.options' => array('Course_D0', 'BubbleSoak_Off', 'AddWash_On', 'EnergyKW_396'),
     ),
     '/wm/editcourse/vs/0' => array(
         'x.com.samsung.da.editCourseList' => 'EditCourseList_D0D2D4D5',
@@ -145,6 +150,11 @@ $washerResources = array(
     '/energyconsumption/0' => array(
         'cumulativePower' => 849000,
         'instantaneousPower' => -500,
+    ),
+    '/wm/statistics/vs/0' => array(
+        'x.com.samsung.da.drumCleanProposal' => 40,
+        'x.com.samsung.da.washingTimes' => 80,
+        'x.com.samsung.da.drumCleanLog' => '2026-01-12T20:12:00',
     ),
 );
 $washerMap = $mapper->map($washerResources);
@@ -168,6 +178,18 @@ mapperCheck(
     'supported temperature list has no scalar unit'
 );
 mapperCheck(isset($washerByName['Cycle']), 'washer cycle entity');
+mapperCheck(
+    isset($washerByName['Add Wash'])
+        && count($washerByName['Add Wash']['actions']) === 2
+        && $washerByName['Add Wash']['value'] === 1,
+    'Add Wash switch entity'
+);
+mapperCheck(
+    isset($washerByName['Consommation du cycle'])
+        && $washerByName['Consommation du cycle']['value'] === '396'
+        && $washerByName['Consommation du cycle']['unit'] === 'Wh',
+    'cycle energy has a readable unit'
+);
 mapperCheck($washerByName['Cycle']['value'] === 'D0', 'washer current cycle code');
 mapperCheck(
     $washerByName['Cycle']['actions'][0]['options'][0] === array('value' => 'D0', 'label' => 'Coton'),
@@ -186,9 +208,17 @@ mapperCheck(
     'spin-level write payload'
 );
 mapperCheck(
-    $washerByName['Energyconsumption - cumulative Power']['unit'] === 'Wh'
-        && $washerByName['Energyconsumption - instantaneous Power']['unit'] === 'W',
-    'energy units'
+    $washerByName['Consommation cumulée']['unit'] === 'kWh'
+        && $washerByName['Consommation cumulée']['value'] === 849.0
+        && $washerByName['Puissance instantanée']['unit'] === 'W'
+        && $washerByName['Puissance instantanée']['value'] === 0.0,
+    'readable energy values and units'
+);
+mapperCheck(
+    $washerByName['Nettoyage du tambour']['value'] === 'Nettoyage recommandé'
+        && $washerByName['Alerte après']['unit'] === 'lavages'
+        && $washerByName['Lavages depuis le dernier nettoyage']['unit'] === 'lavages',
+    'interpreted drum-clean maintenance summary'
 );
 
 $fallbackMap = $mapper->map(array(
@@ -200,5 +230,130 @@ mapperCheck(
         && $fallbackMap['entities'][0]['unit'] === '',
     'vendor power fallback normalized as a binary state'
 );
+
+$unitMap = $mapper->map(array(
+    '/energyconsumption/0' => array(
+        'cumulativePower' => 12.5,
+        'cumulativeUnit' => 'kWh',
+        'instantaneousPower' => 450,
+        'instantaneousPowerUnit' => 'watt',
+    ),
+    '/electrical/0' => array(
+        'voltage' => 230,
+        'electricCurrent' => 1.8,
+        'frequency' => 50,
+    ),
+    '/environment/0' => array(
+        'humidity' => 46,
+        'pressure' => 1013,
+        'co2' => 720,
+    ),
+));
+$unitByName = array();
+foreach ($unitMap['entities'] as $entity) {
+    $unitByName[$entity['name']] = $entity;
+}
+mapperCheck(
+    $unitByName['Consommation cumulée']['value'] === 12.5
+        && $unitByName['Consommation cumulée']['unit'] === 'kWh'
+        && $unitByName['Puissance instantanée']['unit'] === 'W',
+    'explicit energy units are normalized without double conversion'
+);
+mapperCheck(
+    $unitByName['Tension']['unit'] === 'V'
+        && $unitByName['Intensité']['unit'] === 'A'
+        && $unitByName['Fréquence']['unit'] === 'Hz'
+        && $unitByName['Humidité']['unit'] === '%'
+        && $unitByName['Pression']['unit'] === 'hPa'
+        && $unitByName['CO₂']['unit'] === 'ppm',
+    'common numeric information units are inferred using Jeedom conventions'
+);
+
+$translationMap = $mapper->map(array(
+    '/wm/status/vs/0' => array(
+        'x.com.samsung.da.deviceType' => 167,
+        'x.com.samsung.da.updateAllow' => 'NotAllowed',
+        'x.com.samsung.da.laundryOutTime' => 0,
+        'x.com.samsung.da.seamlessControl' => 'Disable',
+        'x.com.samsung.da.kidsLockBypass' => 'On',
+        'x.com.samsung.da.detergentOnce' => 1,
+        'x.com.samsung.da.detergentLeft' => 0,
+        'x.com.samsung.da.detergentBase' => 5,
+        'x.com.samsung.da.detergentAlarm' => 'On',
+        'x.com.samsung.da.detergentType' => 0,
+        'x.com.samsung.da.detergentTotal' => 65,
+        'x.com.samsung.da.specialFunction' => 5,
+        'x.com.samsung.da.laundryPlannerUserSetTime' => 0,
+        'x.com.samsung.da.energyLevelSet' => 1,
+        'x.com.samsung.da.mostUsed' => 'D0',
+        'x.com.samsung.da.usagesDb' => 'ok',
+        'x.com.samsung.da.timeSync' => 'NotSupported',
+    ),
+));
+$translatedNames = array_column($translationMap['entities'], 'name');
+$translatedValues = array_column($translationMap['entities'], 'value', 'name');
+foreach (
+    array(
+        'Type d’appareil', 'Mise à jour autorisée', 'Heure de fin du linge',
+        'Contrôle continu', 'Contournement de la sécurité enfants',
+        'Dose unique de lessive', 'Lessive restante', 'Dose de base de lessive',
+        'Alerte de lessive', 'Type de lessive', 'Quantité totale de lessive',
+        'Fonction spéciale', 'Heure planifiée', 'Niveau d’énergie',
+        'Programme le plus utilisé', 'Base des utilisations',
+        'Synchronisation de l’heure',
+    ) as $translatedName
+) {
+    mapperCheck(in_array($translatedName, $translatedNames, true), 'translated command name ' . $translatedName);
+}
+mapperCheck(
+    preg_match(
+        '/(?:deviceType|updateAllow|laundryOutTime|seamlessControl|kidsLock|detergent|specialFunction|mostUsed|usagesDb|timeSync)/i',
+        implode(' ', $translatedNames)
+    ) === 0,
+    'raw Samsung field names do not leak into generated command names'
+);
+mapperCheck(
+    $translatedValues['Mise à jour autorisée'] === 'Non autorisé'
+        && $translatedValues['Synchronisation de l’heure'] === 'Non pris en charge'
+        && $translatedValues['Base des utilisations'] === 'OK',
+    'common firmware values are translated into readable states'
+);
+
+$requiredCommandTranslations = array(
+    'Activé', 'Désactivé', 'Alimentation', 'Consommation du cycle',
+    'Contrôle à distance', 'Lessive restante', 'Mise à jour autorisée',
+    'Non autorisé', 'Non pris en charge', 'Sécurité enfants',
+    'Température de lavage', 'Vitesse d’essorage',
+);
+foreach (array('en_US', 'de_DE', 'es_ES') as $locale) {
+    $translations = json_decode(
+        file_get_contents(__DIR__ . '/../core/i18n/' . $locale . '.json'),
+        true
+    );
+    $mapperTranslations = $translations['plugins/localthings/core/class/LocalThingsMapper.php'] ?? array();
+    foreach ($requiredCommandTranslations as $translationKey) {
+        mapperCheck(
+            isset($mapperTranslations[$translationKey])
+                && trim((string) $mapperTranslations[$translationKey]) !== '',
+            $locale . ' command translation ' . $translationKey
+        );
+    }
+}
+
+$mapperSource = file_get_contents(dirname(__FILE__) . '/../core/class/LocalThingsMapper.php');
+preg_match_all('/(?:->tr|__)\(\s*[\'\"]([^\'\"]+)[\'\"]/u', $mapperSource, $translationMatches);
+foreach (array('en_US', 'de_DE', 'es_ES') as $locale) {
+    $catalog = json_decode(
+        file_get_contents(dirname(__FILE__) . '/../core/i18n/' . $locale . '.json'),
+        true
+    );
+    $mapperTranslations = $catalog['plugins/localthings/core/class/LocalThingsMapper.php'] ?? array();
+    foreach (array_unique($translationMatches[1]) as $label) {
+        mapperCheck(
+            isset($mapperTranslations[$label]) && trim((string) $mapperTranslations[$label]) !== '',
+            $locale . ' translates mapper label: ' . $label
+        );
+    }
+}
 
 echo "Mapper tests: OK" . PHP_EOL;
