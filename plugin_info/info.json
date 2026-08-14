@@ -5,7 +5,7 @@
 	"description": {
 		"fr_FR": "Contrôle local des appareils Samsung compatibles au moyen de CoAP sur DTLS. Le plugin découvre les appareils présents sur le réseau, crée les équipements Jeedom et génère automatiquement leurs commandes d'information et d'action, sans passer par l'API cloud SmartThings.",
 		"en_US": "Local control of compatible Samsung appliances over CoAP/DTLS. The plugin discovers devices on the LAN, creates Jeedom equipment and automatically generates information and action commands without using the SmartThings cloud API.",
-	    "es_ES": "Control local de los dispositivos Samsung compatibles mediante CoAP/DTLS. El plugin descubre los dispositivos en la LAN, crea equipos Jeedom y genera automáticamente comandos de información y acción sin utilizar la API en la nube de SmartThings.",
+		"es_ES": "Control local de los dispositivos Samsung compatibles mediante CoAP/DTLS. El plugin descubre los dispositivos en la LAN, crea equipos Jeedom y genera automáticamente comandos de información y acción sin utilizar la API en la nube de SmartThings.",
 		"de_DE": "Lokale Steuerung kompatibler Samsung-Geräte über CoAP/DTLS. Das Plugin erkennt Geräte im LAN, erstellt Jeedom-Geräte und generiert automatisch Informations- und Aktionsbefehle, ohne die SmartThings-Cloud-API zu verwenden.",
 		"it_IT": "Controllo locale dei dispositivi Samsung compatibili tramite CoAP/DTLS. Il plugin rileva i dispositivi sulla LAN, crea apparecchiature Jeedom e genera automaticamente comandi di informazione e azione senza utilizzare l'API cloud SmartThings.",
 		"pt_PT": "Controle local de dispositivos Samsung compatíveis via CoAP/DTLS. O plugin descobre dispositivos na LAN, cria equipamentos Jeedom e gera automaticamente comandos de informação e ação sem usar a API em nuvem do SmartThings."
@@ -31,9 +31,7 @@
 		"de_DE",
 		"en_US",
 		"es_ES",
-		"fr_FR",
-		"it_IT",
-		"pt_PT"
+		"fr_FR"
 	],
 	"compatibility": [
 		"smart",
