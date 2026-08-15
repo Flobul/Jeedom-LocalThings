@@ -1,7 +1,7 @@
 {
 	"id": "localthings",
 	"name": "LocalThings",
-	"pluginVersion": "0.4.4",
+	"pluginVersion": "0.4.5",
 	"description": {
 		"fr_FR": "Contrôle local des appareils Samsung compatibles au moyen de CoAP sur DTLS. Le plugin découvre les appareils présents sur le réseau, crée les équipements Jeedom et génère automatiquement leurs commandes d'information et d'action, sans passer par l'API cloud SmartThings.",
 		"en_US": "Local control of compatible Samsung appliances over CoAP/DTLS. The plugin discovers devices on the LAN, creates Jeedom equipment and automatically generates information and action commands without using the SmartThings cloud API.",
@@ -20,7 +20,7 @@
 	},
 	"category": "devicecommunication",
 	"hasDependency": true,
-	"hasOwnDeamon": false,
+	"hasOwnDeamon": true,
 	"maxDependancyInstallTime": 30,
 	"changelog": "https://github.com/Flobul/Jeedom-LocalThings/releases",
 	"documentation": "https://github.com/Flobul/Jeedom-LocalThings",

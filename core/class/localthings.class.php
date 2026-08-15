@@ -17,7 +17,7 @@ require_once __DIR__ . '/LocalThingsClient.php';
 
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.4';
+    public static $_pluginVersion = '0.4.5';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     private static function resourcePath()
@@ -579,13 +579,40 @@ class localthings extends eqLogic
         $eqLogic->checkAndUpdateCmd('connected', $connected ? 1 : 0);
     }
 
-    public static function cron()
+    public static function pollIntervalSeconds($value = null)
     {
-        $interval = max(1, min(1440, (int) config::byKey('poll_interval', __CLASS__, 5)));
+        if ($value === null) {
+            $value = config::byKey('poll_interval', __CLASS__, 5);
+        }
+        $value = strtolower(trim((string) $value));
+        if (preg_match('/^(\d+)s$/', $value, $matches) === 1) {
+            return max(10, min(86400, (int) $matches[1]));
+        }
+        return max(1, min(1440, (int) $value)) * 60;
+    }
+
+    private static function pollIntervalLabel($seconds)
+    {
+        $seconds = max(1, (int) $seconds);
+        if ($seconds < 60) {
+            return $seconds . ' s';
+        }
+        if ($seconds % 86400 === 0) {
+            return ($seconds / 86400) . ' j';
+        }
+        if ($seconds % 3600 === 0) {
+            return ($seconds / 3600) . ' h';
+        }
+        return ($seconds / 60) . ' min';
+    }
+
+    public static function poll()
+    {
+        $interval = self::pollIntervalSeconds();
         $now = time();
         foreach (self::byType(__CLASS__, true) as $eqLogic) {
             $lastRefresh = (int) $eqLogic->getConfiguration('last_refresh', 0);
-            if ($lastRefresh > 0 && $now - $lastRefresh < $interval * 60) {
+            if ($lastRefresh > 0 && $now - $lastRefresh < $interval) {
                 continue;
             }
             try {
@@ -597,6 +624,46 @@ class localthings extends eqLogic
                     $eqLogic->getHumanName() . ' : ' . $exception->getMessage()
                 );
             }
+        }
+    }
+
+    public static function cron()
+    {
+        $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
+        if (is_object($pollCron) && $pollCron->running()) {
+            return;
+        }
+        self::poll();
+    }
+
+    public static function deamon_info()
+    {
+        $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
+        return array(
+            'log' => __CLASS__,
+            'state' => is_object($pollCron) && $pollCron->running() ? 'ok' : 'nok',
+            'launchable' => is_object($pollCron) ? 'ok' : 'nok',
+            'launchable_message' => is_object($pollCron)
+                ? ''
+                : __('Tâche de rafraîchissement introuvable, réinstallez le plugin', __FILE__),
+        );
+    }
+
+    public static function deamon_start()
+    {
+        self::deamon_stop();
+        $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
+        if (!is_object($pollCron)) {
+            throw new RuntimeException(__('Tâche de rafraîchissement introuvable', __FILE__));
+        }
+        $pollCron->run();
+    }
+
+    public static function deamon_stop()
+    {
+        $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
+        if (is_object($pollCron)) {
+            $pollCron->halt();
         }
     }
 
@@ -625,7 +692,9 @@ class localthings extends eqLogic
         if ($certificateExpires !== false) {
             $certificateResult .= ' (' . date('Y-m-d', $certificateExpires) . ')';
         }
-        $pollInterval = max(1, min(1440, (int) config::byKey('poll_interval', __CLASS__, 5)));
+        $pollInterval = self::pollIntervalSeconds();
+        $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
+        $pollRunning = is_object($pollCron) && $pollCron->running();
         return array(
             array(
                 'test' => __('Transport OpenSSL DTLS', __FILE__),
@@ -656,9 +725,10 @@ class localthings extends eqLogic
             ),
             array(
                 'test' => __('Rafraîchissement automatique', __FILE__),
-                'result' => $pollInterval . ' min',
-                'advice' => '',
-                'state' => true,
+                'result' => self::pollIntervalLabel($pollInterval)
+                    . ' - ' . ($pollRunning ? 'OK' : __('Démon arrêté', __FILE__)),
+                'advice' => $pollRunning ? '' : __('Démarrez le démon du plugin', __FILE__),
+                'state' => $pollRunning,
             ),
         );
     }
@@ -1091,6 +1161,13 @@ class localthings extends eqLogic
     private function renderWidgetCommandFrame($command, $html, $group, $deviceType, $subType)
     {
         $subType = preg_replace('/[^a-z0-9_-]/i', '', (string) $subType);
+        $entityKey = (string) $command->getConfiguration('entityKey', '');
+        $statusSlot = $group === 'status'
+            ? LocalThingsWidget::statusSlot($entityKey, $command->getName())
+            : '';
+        $isPercentage = $command->getType() === 'info'
+            && $command->getSubType() === 'numeric'
+            && LocalThingsWidget::isPercentageUnit($command->getUnite());
         if (
             $command->getType() === 'info'
             && $command->getSubType() === 'numeric'
@@ -1100,7 +1177,7 @@ class localthings extends eqLogic
         }
         $presentation = LocalThingsWidget::presentation(
             $deviceType,
-            $command->getConfiguration('entityKey', ''),
+            $entityKey,
             $command->getType(),
             $group,
             $command->getName()
@@ -1117,10 +1194,44 @@ class localthings extends eqLogic
             ? ''
             : '<span class="localthings-widget-command-label">'
                 . htmlspecialchars(__($presentation['label'], __FILE__), ENT_QUOTES, 'UTF-8') . '</span>';
-        $visualClass = $visual !== '' || $label !== '' ? ' localthings-widget-command-presented' : '';
-        return '<div class="localthings-widget-command localthings-widget-command-' . $subType . $visualClass
-            . '" data-command-group="' . $group . '" data-cmd_id="' . (int) $command->getId() . '">'
-            . $visual . '<div class="localthings-widget-command-content">' . $label . $html . '</div></div>';
+        if ($isPercentage && $label === '') {
+            $label = '<span class="localthings-widget-command-label">'
+                . htmlspecialchars($command->getName(), ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+        $percentage = '';
+        if ($isPercentage) {
+            $percentageValue = LocalThingsWidget::percentageValue($command->execCmd());
+            $percentageText = rtrim(rtrim(number_format($percentageValue, 1, '.', ''), '0'), '.');
+            $percentage = '<div class="localthings-widget-percentage"'
+                . ' data-cmd_id="' . (int) $command->getId() . '"'
+                . ' data-value="' . $percentageText . '"'
+                . ' role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+                . ' aria-valuenow="' . $percentageText . '">'
+                . '<span class="localthings-widget-percentage-track" aria-hidden="true">'
+                . '<span class="localthings-widget-percentage-value" style="width:'
+                . $percentageText . '%"></span></span></div>';
+        }
+        $visualClass = $visual !== '' || $label !== '' || $percentage !== ''
+            ? ' localthings-widget-command-presented'
+            : '';
+        $statusClass = $statusSlot === '' ? '' : ' localthings-widget-status-' . $statusSlot;
+        $statusAttributes = '';
+        if ($statusSlot !== '') {
+            $statusValue = (string) $command->execCmd();
+            $statusAttributes = ' data-status-slot="' . $statusSlot . '"'
+                . ' data-status-value="'
+                . htmlspecialchars($statusValue, ENT_QUOTES, 'UTF-8') . '"';
+            if ($statusSlot === 'state') {
+                $statusAttributes .= ' data-operating="'
+                    . (LocalThingsWidget::isOperatingState($statusValue) ? 'true' : 'false') . '"';
+            }
+        }
+        return '<div class="localthings-widget-command localthings-widget-command-' . $subType
+            . $visualClass . $statusClass
+            . '" data-command-group="' . $group . '" data-cmd_id="' . (int) $command->getId() . '"'
+            . $statusAttributes . '>'
+            . $visual . '<div class="localthings-widget-command-content">'
+            . $label . $html . $percentage . '</div></div>';
     }
 }
 

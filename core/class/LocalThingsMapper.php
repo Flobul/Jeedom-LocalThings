@@ -476,19 +476,30 @@ class LocalThingsMapper
                         );
                         $actions = $this->switchActions($recipe);
                     }
+                    $isReadOnlyAlarm = in_array(
+                        strtolower($prefix),
+                        array('detergentalarm', 'softeneralarm'),
+                        true
+                    ) && in_array($value, array('On', 'Off'), true);
                     $entities[] = array(
                         'key' => $key,
                         'name' => $this->optionName($prefix),
                         'platform' => count($actions) > 0 ? 'switch' : 'sensor',
                         'type' => 'info',
-                        'subtype' => count($actions) > 0 ? 'binary' : (is_numeric($value) ? 'numeric' : 'string'),
+                        'subtype' => count($actions) > 0
+                            ? 'binary'
+                            : ($isReadOnlyAlarm ? 'string' : (is_numeric($value) ? 'numeric' : 'string')),
                         'unit' => $prefix === 'EnergyKW' ? 'Wh' : '',
                         'category' => '',
-                        'value' => count($actions) > 0 ? ($value === 'On' ? 1 : 0) : $value,
+                        'value' => count($actions) > 0
+                            ? ($value === 'On' ? 1 : 0)
+                            : ($isReadOnlyAlarm ? $this->tr($value === 'On' ? 'Active' : 'Inactive') : $value),
                         'options' => array(),
                         'actions' => $actions,
                     );
-                    $states[$key] = count($actions) > 0 ? ($value === 'On' ? 1 : 0) : $value;
+                    $states[$key] = count($actions) > 0
+                        ? ($value === 'On' ? 1 : 0)
+                        : ($isReadOnlyAlarm ? $this->tr($value === 'On' ? 'Active' : 'Inactive') : $value);
                 }
             }
         }
@@ -920,6 +931,12 @@ class LocalThingsMapper
     private function displayValue($href, $field, $value, $representation = array())
     {
         if (
+            preg_match('#/alarms?/(?:vs/)?\d+$#i', $href)
+            && preg_match('/(?:^|\.)items$/i', $field)
+        ) {
+            return $this->alarmSummary($value);
+        }
+        if (
             is_scalar($value)
             && strpos($href, '/operational/state/') !== false
             && preg_match('/(?:^|\.)state$/i', $field)
@@ -961,6 +978,133 @@ class LocalThingsMapper
             return $this->translatedValue($value);
         }
         return $value;
+    }
+
+    /**
+     * Samsung exposes /alarms/vs/0 on several appliance families. Rows kept
+     * as Deleted and placeholder codes ending in _OFF are inactive; this is
+     * the same cross-family rule used by mbillow/localthings common.ALARMS.
+     */
+    private function alarmSummary($items)
+    {
+        $items = $this->decodedAlarmItems($items);
+        if ($items === null) {
+            return $this->tr('Alarme non interprétable');
+        }
+        $active = array();
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $code = trim((string) (
+                $item['x.com.samsung.da.code']
+                ?? $item['code']
+                ?? ''
+            ));
+            $state = strtolower(trim((string) (
+                $item['x.com.samsung.da.state']
+                ?? $item['state']
+                ?? ''
+            )));
+            if (
+                $code === ''
+                || $state === 'deleted'
+                || preg_match('/_off$/i', $code)
+            ) {
+                continue;
+            }
+            $summary = $this->alarmCodeLabel($code);
+            $triggeredAt = trim((string) (
+                $item['x.com.samsung.da.triggeredTime']
+                ?? $item['triggeredTime']
+                ?? ''
+            ));
+            $triggeredAt = $this->alarmTimeLabel($triggeredAt);
+            if ($triggeredAt !== '') {
+                $summary .= ' — ' . $this->tr('Début') . ' : ' . $triggeredAt;
+            }
+            $active[strtolower($code)] = $summary;
+        }
+        return count($active) > 0
+            ? implode(' ; ', array_values($active))
+            : $this->tr('Aucune alarme');
+    }
+
+    private function decodedAlarmItems($items)
+    {
+        if (is_string($items)) {
+            $raw = trim($items);
+            if ($raw === '') {
+                return array();
+            }
+            for ($depth = 0; $depth < 2 && is_string($items); $depth++) {
+                $items = json_decode($items, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    return null;
+                }
+            }
+        }
+        if (!is_array($items)) {
+            return $items === null ? array() : null;
+        }
+        if (isset($items['items']) && is_array($items['items'])) {
+            $items = $items['items'];
+        }
+        if (
+            isset($items['x.com.samsung.da.code'])
+            || isset($items['code'])
+        ) {
+            return array($items);
+        }
+        return array_values($items);
+    }
+
+    private function alarmTimeLabel($value)
+    {
+        if (
+            preg_match(
+                '/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/',
+                (string) $value,
+                $matches
+            )
+        ) {
+            return $matches[3] . '/' . $matches[2] . '/' . $matches[1]
+                . ' ' . $matches[4] . ':' . $matches[5];
+        }
+        return '';
+    }
+
+    private function alarmCodeLabel($code)
+    {
+        $normalized = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $code));
+        $rules = array(
+            '/(?:hotwarning|overheat|hightemp|temperaturehigh)/' => 'Température élevée',
+            '/(?:door.*open|open.*door)/' => 'Porte ouverte',
+            '/filter/' => 'Filtre à entretenir',
+            '/(?:watersupply|waterinlet|inletwater|nowater)/' => 'Problème d’arrivée d’eau',
+            '/(?:drain|waterout)/' => 'Problème de vidange',
+            '/(?:gasleak|leakgas)/' => 'Fuite de gaz détectée',
+            '/(?:waterleak|leakage|leak)/' => 'Fuite détectée',
+            '/(?:overflow|overfill)/' => 'Débordement détecté',
+            '/motor/' => 'Problème moteur',
+            '/(?:voltage|powersupply|powererror)/' => 'Problème d’alimentation',
+            '/(?:communication|network|offline)/' => 'Problème de communication',
+            '/detergent/' => 'Vérifiez la lessive',
+            '/softener/' => 'Vérifiez l’adoucissant',
+            '/(?:tankempty|emptytank|reservoirempty)/' => 'Réservoir vide',
+            '/sensor/' => 'Défaut de capteur',
+            '/fan/' => 'Problème de ventilation',
+            '/compressor/' => 'Problème du compresseur',
+            '/defrost/' => 'Problème de dégivrage',
+            '/(?:smoke|fire)/' => 'Fumée détectée',
+            '/errorcode/' => 'Erreur de l’appareil',
+        );
+        foreach ($rules as $pattern => $label) {
+            if (preg_match($pattern, $normalized)) {
+                return $this->tr($label);
+            }
+        }
+        return $this->tr('Alerte') . ' (' . (string) $code . ')';
     }
 
     private function translatedValue($value)
@@ -1035,10 +1179,17 @@ class LocalThingsMapper
             '/energyconsumption/0|cumulativeUnit' => 'Unité de consommation',
             '/energyconsumption/0|cumulativeDate' => 'Date du relevé',
             '/energyconsumption/0|cumulativeDateUTC' => 'Date UTC du relevé',
+            '/alarms/vs/0|x.com.samsung.da.items' => 'Alarmes',
         );
         $knownKey = $href . '|' . $field;
         if (isset($known[$knownKey])) {
             return $this->tr($known[$knownKey]);
+        }
+        if (
+            preg_match('#/alarms?/(?:vs/)?\d+$#i', $href)
+            && preg_match('/(?:^|\.)items$/i', $field)
+        ) {
+            return $this->tr('Alarmes');
         }
         if (preg_match('/drumCleanProposal/i', $field)) {
             return $this->tr('Alerte après');
@@ -1122,6 +1273,7 @@ class LocalThingsMapper
             'detergenttype' => 'Type de lessive',
             'detergenttotal' => 'Quantité totale de lessive',
             'softenerleft' => 'Adoucissant restant',
+            'softeneralarm' => 'Alerte d’adoucissant',
             'specialfunction' => 'Fonction spéciale',
             'laundryplannerusersettime' => 'Heure planifiée',
             'energylevelset' => 'Niveau d’énergie',

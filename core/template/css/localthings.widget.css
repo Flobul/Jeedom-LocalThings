@@ -209,6 +209,31 @@
   box-shadow: none !important;
 }
 
+.localthings-widget-percentage {
+  width: 100%;
+  margin-top: 5px;
+}
+
+.localthings-widget-percentage-track {
+  display: block;
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgba(127, 127, 127, .22);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .12);
+}
+
+.localthings-widget-percentage-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--link-color, #2eaadb);
+  transition: width .35s ease;
+}
+
 .localthings-widget-toggle-actions {
   display: flex;
   align-items: center;
@@ -313,6 +338,38 @@
   flex-basis: 32px;
   width: 32px;
   height: 32px;
+}
+
+.localthings-widget-status-progress .localthings-widget-command-icon,
+.localthings-widget-status-progress .localthings-widget-percentage-value {
+  background: #2eaadb;
+}
+
+.localthings-widget-status-progress .cmd-widget .state,
+.localthings-widget-status-progress .cmd-widget .value {
+  color: #2389b4 !important;
+  font-weight: 700;
+}
+
+.localthings-widget-status-progress.localthings-status-active {
+  border-color: rgba(46, 170, 219, .42);
+  box-shadow: 0 3px 10px rgba(46, 170, 219, .16);
+}
+
+.localthings-widget-status-remaining.localthings-status-active .localthings-widget-command-icon {
+  background: #f0a52b;
+  box-shadow: 0 0 0 3px rgba(240, 165, 43, .16);
+}
+
+.localthings-widget-status-remaining .localthings-widget-command-icon .fa-spin {
+  animation-duration: 2.4s;
+  animation-timing-function: linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .localthings-widget-status-remaining .localthings-widget-command-icon .fa-spin {
+    animation: none;
+  }
 }
 
 .localthings-widget-controls .localthings-widget-command {

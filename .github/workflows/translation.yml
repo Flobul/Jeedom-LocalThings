@@ -5,18 +5,17 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "core/i18n/**"
-      - "core/class/**"
-      - "core/ajax/**"
-      - "core/php/**"
-      - "desktop/**"
-      - "plugin_info/**"
 
 jobs:
-  translations:
+  auto-translate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: Mips2648/plugins-translations@v5
-
+        with:
+          deepl_api_key: ${{ secrets.DEEPL_API_KEY }}
+          source_language: fr_FR
+          target_languages: fr_FR,en_US,es_ES,de_DE,it_IT,pt_PT
+          use_core_translations: true
+          include_empty_translation: true
+          generate_source_language_translations: true

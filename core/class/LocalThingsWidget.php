@@ -166,7 +166,7 @@ class LocalThingsWidget
                 $profile['type'] !== 'washer'
                 || in_array(
                     $maintenanceRole,
-                    array('drum_clean_status', 'drum_clean_threshold', 'washing_count'),
+                    array('drum_clean_status', 'drum_clean_threshold', 'washing_count', 'alarm'),
                     true
                 )
             )
@@ -231,6 +231,12 @@ class LocalThingsWidget
         if (preg_match('/filter.*(?:life|status|usage|remind)/', $identity)) {
             return 'filter';
         }
+        if (preg_match('/detergent.*alarm/', $identity)) {
+            return 'detergent_alert';
+        }
+        if (preg_match('/softener.*alarm/', $identity)) {
+            return 'softener_alert';
+        }
         if (preg_match('/detergent.*(?:left|level)/', $identity)) {
             return 'detergent';
         }
@@ -284,6 +290,46 @@ class LocalThingsWidget
         );
     }
 
+    public static function isPercentageUnit($unit)
+    {
+        $unit = strtolower(trim((string) $unit));
+        return in_array($unit, array('%', 'percent', 'percentage', 'pourcentage'), true);
+    }
+
+    public static function percentageValue($value)
+    {
+        if (is_string($value)) {
+            $value = str_replace(',', '.', trim($value));
+        }
+        if (!is_numeric($value)) {
+            return 0.0;
+        }
+        return max(0.0, min(100.0, (float) $value));
+    }
+
+    public static function isOperatingState($value)
+    {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return false;
+        }
+        $value = function_exists('mb_strtolower')
+            ? mb_strtolower($value, 'UTF-8')
+            : strtolower($value);
+        $value = strtr($value, array(
+            'à' => 'a', 'ä' => 'a', 'â' => 'a', 'ç' => 'c', 'é' => 'e',
+            'è' => 'e', 'ê' => 'e', 'ë' => 'e', 'î' => 'i', 'ï' => 'i',
+            'ö' => 'o', 'ô' => 'o', 'ù' => 'u', 'ü' => 'u', 'û' => 'u',
+        ));
+        if (preg_match('/(?:^|\b)(?:ready|pret|idle|pause|paused|stop|stopped|arrete|finished|termine|complete|completed|off)(?:\b|$)/', $value)) {
+            return false;
+        }
+        return preg_match(
+            '/(?:^|\b)(?:run|running|en cours|en curso|lauft|working|washing|lavage|rinse|rincage|spin|essorage|drying|sechage|heating|chauffage|cooking|cuisson|cleaning|nettoyage|cooling|refroidissement|purifying|dehumidifying|operation)(?:\b|$)/',
+            $value
+        ) === 1;
+    }
+
     private static function isTechnicalDetail($identity)
     {
         return preg_match(
@@ -307,11 +353,14 @@ class LocalThingsWidget
         if (preg_match('/filter.*(?:life|status|remind|usage)/', $identity)) {
             return 'filter';
         }
-        if (preg_match('/detergent.*(?:left|level|alarm)/', $identity)) {
+        if (preg_match('/detergent.*(?:left|level)/', $identity)) {
             return 'detergent';
         }
-        if (preg_match('/softener.*(?:left|level|alarm)/', $identity)) {
+        if (preg_match('/softener.*(?:left|level)/', $identity)) {
             return 'softener';
+        }
+        if (preg_match('/(?:^|[_\s\/-])alarms?(?:[_\s\/-]|$)/', $identity)) {
+            return 'alarm';
         }
         if (preg_match('/(?:descal|selfclean|autoclean|tubclean)/', $identity)) {
             return 'cleaning';
@@ -438,6 +487,7 @@ class LocalThingsWidget
             'filter' => array('label' => 'État du filtre', 'icon' => 'fas fa-filter', 'asset' => ''),
             'detergent' => array('label' => 'Lessive', 'icon' => 'fas fa-soap', 'asset' => ''),
             'softener' => array('label' => 'Adoucissant', 'icon' => 'fas fa-tint', 'asset' => ''),
+            'alarm' => array('label' => 'État des alarmes', 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
             'cleaning' => array('label' => 'Nettoyage', 'icon' => 'fas fa-magic', 'asset' => ''),
         );
         $maintenanceRole = self::maintenanceRole($entityKey, $name);
@@ -462,6 +512,8 @@ class LocalThingsWidget
                 'filter' => array('label' => 'État du filtre', 'icon' => 'fas fa-filter', 'asset' => ''),
                 'detergent' => array('label' => 'Lessive restante', 'icon' => 'fas fa-soap', 'asset' => ''),
                 'softener' => array('label' => 'Adoucissant restant', 'icon' => 'fas fa-tint', 'asset' => ''),
+                'detergent_alert' => array('label' => 'Alerte de lessive', 'icon' => 'fas fa-bell', 'asset' => ''),
+                'softener_alert' => array('label' => 'Alerte d’adoucissant', 'icon' => 'fas fa-bell', 'asset' => ''),
                 'alert' => array('label' => 'Alerte', 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
                 'tank' => array('label' => 'Réservoir', 'icon' => 'fas fa-water', 'asset' => ''),
             );
@@ -580,6 +632,7 @@ class LocalThingsWidget
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
         $priorities = array(
+            4 => array('alarms_vs', 'alarme'),
             5 => array('maintenance_drum_clean_status'),
             6 => array('drumcleanproposal', 'drum_clean_proposal'),
             7 => array('washingtimes', 'washing_times'),

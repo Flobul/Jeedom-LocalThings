@@ -58,6 +58,12 @@ température, essorage, rinçages et options comme Bubble Soak ou Add Wash) sont
 présentés ensemble avant les commandes de démarrage, pause et arrêt. Les autres
 familles disposent de la même organisation adaptée à leurs réglages.
 
+La commande **Options disponibles** correspond au catalogue technique
+`supportedOptions` fourni par le firmware. Le mappeur l'utilise comme source
+de secours pour construire le sélecteur de programme lorsque `editCourseList`
+est absent ou vide. Elle reste disponible dans la configuration avancée pour
+le diagnostic, mais son contenu hexadécimal n'est pas affiché dans le widget.
+
 Les informations secondaires sont réparties dans des pages **Entretien**,
 **Consommation** et **Informations**. Une page n'est proposée que si l'appareil
 remonte des commandes correspondantes. La navigation utilise les onglets déjà
@@ -73,6 +79,14 @@ lecture. Les informations numériques historisées ouvrent directement
 l'historique Jeedom au clic. La page Informations ne conserve que les états
 secondaires utiles qui ne sont pas déjà affichés ailleurs.
 
+La capacité Samsung commune `/alarms/vs/0` est également interprétée pour
+toutes les familles d'appareils. Les entrées supprimées ou désactivées sont
+ignorées ; les alarmes actives apparaissent dans **Entretien** sous une forme
+lisible, par exemple « Température élevée — Début : 31/07/2026 23:05 », tout
+en conservant le code brut en complément lorsqu'il n'est pas encore connu du
+plugin. Les alarmes sont décodées de la même façon lorsque l'appareil les
+renvoie directement comme tableau ou comme chaîne JSON.
+
 Les options binaires sont regroupées en interrupteurs On/Off dont l'état suit
 la commande d'information associée. La page Santé reprend les contrôles du
 transport, des certificats et du rafraîchissement, puis détaille chaque
@@ -80,6 +94,17 @@ transport, des certificats et du rafraîchissement, puis détaille chaque
 dernière erreur dans la configuration de l'équipement. Les unités explicites
 des appareils sont normalisées pour Jeedom ; les mesures courantes reçoivent
 une unité cohérente même lorsque le firmware ne l'annonce pas.
+Les états **Lessive restante**, **Alerte de lessive** et leurs équivalents
+pour l'adoucissant sont affichés séparément lorsqu'ils existent. Ils restent
+en lecture seule si l'appareil ne publie aucune ressource modifiable : le
+plugin ne déduit jamais une action d'écriture à partir d'un simple état.
+Les informations numériques exprimées en pourcentage disposent également
+d'une barre de progression qui suit les mises à jour natives Jeedom.
+
+Le rafraîchissement automatique peut descendre à 10 secondes. Cette fréquence
+infra-minute utilise une tâche cron Jeedom en mode démon ; les intervalles
+historiques en minutes restent disponibles et la valeur par défaut reste de
+5 minutes.
 
 ## Compatibilité
 
@@ -129,6 +154,7 @@ propriétaire ou administrateur.
 ## Licences
 
 Le plugin est distribué sous AGPL-3.0-or-later. Le comportement protocolaire
-est adapté des travaux de `mbillow/localthings` et `smartthings-local`, sous
+est adapté des travaux de [mbillow/localthings](https://github.com/mbillow/localthings)
+et [QuiteYellow/SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local), sous
 licence MIT ; les textes correspondants sont conservés dans
 `resources/attributions/`.

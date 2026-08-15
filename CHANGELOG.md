@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.5
+
+- Harmonisation de la page de configuration avec les autres plugins Jeedom :
+  branche, source, version installée et accès directs à la documentation, au
+  changelog et au Community.
+- Remplacement du champ de découverte réseau par la saisie CIDR multiligne
+  utilisée dans le plugin Tasmota, sans changer la clé `discovery_networks`.
+- Mise en évidence des paramètres modifiés tant que la configuration n'a pas
+  été enregistrée, au moyen de `printPluginConfiguration()`.
+- Conservation locale de la suite de tests pour le développement, avec
+  exclusion complète du dossier `tests/` du dépôt Git.
+- Décodage des alarmes Samsung reçues sous forme de JSON : les entrées
+  inactives sont ignorées et chaque alarme active affiche son type traduit
+  ainsi que son heure de déclenchement dans l'onglet Entretien.
+- Animation et coloration du temps restant lorsqu'un appareil fonctionne,
+  avec mise en évidence de sa progression.
+- Affichage distinct des alertes de lessive et d'adoucissant, sans générer de
+  commande d'écriture lorsque le firmware ne fournit qu'un état en lecture.
+- Ajout d'une barre de progression aux commandes d'information numériques
+  exprimées en pourcentage, synchronisée avec le widget natif de la commande.
+- Ajout de l'intervalle de rafraîchissement de 10 secondes au moyen d'une
+  tâche cron Jeedom en mode démon, tout en conservant les intervalles en
+  minutes existants.
+
 ## 0.4.4
 
 - Correction des actions Samsung : suppression de la relecture prématurée qui
@@ -20,8 +44,7 @@
   des unités Jeedom usuelles lorsqu'elles sont absentes.
 - Traduction des noms et des valeurs techniques Samsung lors de la génération
   des commandes, avec compléments anglais, allemand et espagnol.
-- Conservation des tests dans le dépôt de développement, avec exclusion des
-  archives installées dans Jeedom.
+- Exclusion des tests des archives installées dans Jeedom.
 
 ## 0.4.3
 

@@ -89,3 +89,88 @@
   request("transportStatus", {}, setTransportState);
   loadCertificateState();
 })();
+
+/* Indique les champs de configuration modifiés mais pas encore enregistrés. */
+function printPluginConfiguration() {
+  var divConfig = document.getElementById("configuration_plugin_localthings");
+  var btnSave = document.getElementById("bt_savePluginConfig");
+  if (!divConfig || !btnSave || divConfig.hasAttribute("data-localthings-tracked")) return;
+
+  divConfig.setAttribute("data-localthings-tracked", "");
+
+  var configInputs = divConfig.querySelectorAll(".configKey");
+  var modificationCount = 0;
+  var initialValues = new Map();
+  var modificationMessage = document.createElement("i");
+
+  modificationMessage.classList.add(
+    "modificationWithoutSave",
+    "label",
+    "label-warning",
+    "pull-right",
+    "localthings-modification-message"
+  );
+  modificationMessage.innerHTML = "{{Modification en cours...}}";
+  modificationMessage.unseen();
+  btnSave.parentNode.insertBefore(modificationMessage, btnSave.nextSibling);
+
+  function valueOf(input) {
+    return input.type === "checkbox" ? input.checked : input.value;
+  }
+
+  function resetStyle(input) {
+    input.style.setProperty("background-color", "", "important");
+    input.style.setProperty("color", "", "important");
+  }
+
+  function setModifiedStyle(input) {
+    input.style.setProperty("background-color", "var(--al-warning-color)", "important");
+    input.style.setProperty("color", "var(--sc-lightTxt-color)", "important");
+  }
+
+  function updateModificationStatus() {
+    if (modificationCount > 0) {
+      modificationMessage.seen();
+    } else {
+      modificationMessage.unseen();
+    }
+  }
+
+  configInputs.forEach(function (input) {
+    resetStyle(input);
+    initialValues.set(input, valueOf(input));
+
+    var eventType = input.type === "checkbox" || input.nodeName === "SELECT" ? "change" : "input";
+    input.addEventListener(eventType, function () {
+      var isModified = valueOf(this) !== initialValues.get(this);
+      var wasModified = this.hasAttribute("data-modified");
+
+      if (isModified && !wasModified) {
+        setModifiedStyle(this);
+        this.setAttribute("data-modified", "");
+        modificationCount++;
+      } else if (!isModified && wasModified) {
+        resetStyle(this);
+        this.removeAttribute("data-modified");
+        modificationCount--;
+      }
+      updateModificationStatus();
+    });
+  });
+
+  btnSave.addEventListener("click", function () {
+    configInputs.forEach(function (input) {
+      initialValues.set(input, valueOf(input));
+      resetStyle(input);
+      input.removeAttribute("data-modified");
+    });
+    modificationCount = 0;
+    modificationMessage.unseen();
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", printPluginConfiguration);
+} else {
+  setTimeout(printPluginConfiguration, 100);
+}

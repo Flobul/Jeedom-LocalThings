@@ -130,6 +130,73 @@
             setToggleState(toggle, online);
         });
     });
+    widget.querySelectorAll('.localthings-widget-percentage[data-cmd_id]').forEach(function (progress) {
+        if (progress.getAttribute('data-progress-bound') === '1') return;
+        progress.setAttribute('data-progress-bound', '1');
+        var frame = progress.closest('.localthings-widget-command');
+        var content = progress.closest('.localthings-widget-command-content');
+        var syncProgress = function () {
+            var state = frame ? frame.querySelector('.cmd-widget .state') : null;
+            var rawValue = state ? state.textContent : progress.getAttribute('data-value');
+            var value = parseFloat(String(rawValue || '').replace(',', '.'));
+            if (!isFinite(value)) value = 0;
+            value = Math.max(0, Math.min(100, value));
+            var fill = progress.querySelector('.localthings-widget-percentage-value');
+            if (fill) fill.style.width = value + '%';
+            progress.setAttribute('aria-valuenow', value);
+            progress.setAttribute('data-value', value);
+        };
+        syncProgress();
+        if (content && typeof MutationObserver !== 'undefined') {
+            var observer = new MutationObserver(syncProgress);
+            observer.observe(content, {childList: true, characterData: true, subtree: true});
+            progress._localthingsObserver = observer;
+        }
+    });
+    var statusContainer = widget.querySelector('.localthings-widget-status');
+    var normalizeStatus = function (value) {
+        value = String(value || '').trim().toLowerCase();
+        if (typeof value.normalize === 'function') {
+            value = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        }
+        return value;
+    };
+    var statusValue = function (frame) {
+        if (!frame) return '';
+        var state = frame.querySelector('.cmd-widget .state, .cmd-widget .value');
+        var value = state ? state.textContent : '';
+        if (!String(value).trim()) value = frame.getAttribute('data-status-value') || '';
+        return normalizeStatus(value);
+    };
+    var syncOperatingStatus = function () {
+        var stateFrame = widget.querySelector('.localthings-widget-command[data-status-slot="state"]');
+        var state = statusValue(stateFrame);
+        var inactive = /(?:^|\b)(?:ready|pret|idle|pause|paused|stop|stopped|arrete|finished|termine|complete|completed|off)(?:\b|$)/.test(state);
+        var operating = !inactive && /(?:^|\b)(?:run|running|en cours|en curso|lauft|working|washing|lavage|rinse|rincage|spin|essorage|drying|sechage|heating|chauffage|cooking|cuisson|cleaning|nettoyage|cooling|refroidissement|purifying|dehumidifying|operation)(?:\b|$)/.test(state);
+        if (!state && stateFrame) operating = stateFrame.getAttribute('data-operating') === 'true';
+        var remaining = widget.querySelector('.localthings-widget-command[data-status-slot="remaining"]');
+        var progress = widget.querySelector('.localthings-widget-command[data-status-slot="progress"]');
+        if (!state && !operating) {
+            var remainingValue = statusValue(remaining);
+            var progressValue = parseFloat(statusValue(progress).replace(',', '.'));
+            operating = (!!remainingValue && !/^(?:0+:?)+$/.test(remainingValue))
+                || (isFinite(progressValue) && progressValue > 0 && progressValue < 100);
+        }
+        if (remaining) {
+            remaining.classList.toggle('localthings-status-active', operating);
+            var hourglass = remaining.querySelector('.localthings-widget-command-icon i');
+            if (hourglass) hourglass.classList.toggle('fa-spin', operating);
+        }
+        if (progress) progress.classList.toggle('localthings-status-active', operating);
+    };
+    syncOperatingStatus();
+    if (statusContainer && statusContainer.getAttribute('data-status-bound') !== '1'
+        && typeof MutationObserver !== 'undefined') {
+        statusContainer.setAttribute('data-status-bound', '1');
+        var statusObserver = new MutationObserver(syncOperatingStatus);
+        statusObserver.observe(statusContainer, {childList: true, characterData: true, subtree: true});
+        statusContainer._localthingsObserver = statusObserver;
+    }
     var health = widget.querySelector('.health[data-cmd_id="#health_id#"]');
     if (health && '#health_id#' !== '') {
         jeedom.cmd.addUpdateFunction('#health_id#', function (_options) {
