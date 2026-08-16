@@ -43,8 +43,8 @@ class LocalThingsDeviceClient
         $host = $this->validateHost($host);
         $this->log(
             'info',
-            '[Discovery] Analyse de ' . $host
-            . ($exhaustive ? ' (tous les ports UDP 49152-49160)' : '')
+            sprintf(__('[Discovery] Analyse de %s', __FILE__), $host)
+            . ($exhaustive ? __(' (tous les ports UDP 49152-49160)', __FILE__) : '')
         );
         return $this->withHostLock($host, function () use ($host, $preferredPort, $exhaustive) {
             return $this->probeUnlocked($host, $preferredPort, $exhaustive);
@@ -58,11 +58,15 @@ class LocalThingsDeviceClient
             $this->certificateStore->mintLeaf('host:' . $host);
             $this->log(
                 'info',
-                '[Certificate] Identité cliente prête pour ' . $host
-                . ' en ' . $this->durationMs($identityStarted) . ' ms'
+                sprintf(
+                    __('[Certificate] Identité cliente prête pour %1$s en %2$d ms', __FILE__),
+                    $host,
+                    $this->durationMs($identityStarted)
+                )
             );
         } catch (Exception $exception) {
-            $message = 'Préparation du certificat client impossible : ' . $exception->getMessage();
+            $message = __('Préparation du certificat client impossible : ', __FILE__)
+                . $exception->getMessage();
             $this->log('warning', '[Certificate] ' . $message);
             throw new RuntimeException($message, 0, $exception);
         }
@@ -71,36 +75,51 @@ class LocalThingsDeviceClient
         $ports = self::buildProbeOrder($detectedPorts, $preferredPort, $exhaustive);
         $this->log(
             'info',
-            '[Discovery] ' . $host . ' ports candidats : ' . implode(', ', $ports)
-            . '; source UDP locale : ' . self::sourcePort($host)
+            sprintf(
+                __('[Discovery] %1$s ports candidats : %2$s; source UDP locale : %3$d', __FILE__),
+                $host,
+                implode(', ', $ports),
+                self::sourcePort($host)
+            )
         );
         $lastError = '';
         foreach ($ports as $port) {
             $started = microtime(true);
             $this->log(
                 $exhaustive ? 'info' : 'debug',
-                '[Discovery] Tentative DTLS ' . $host . ':' . $port
+                sprintf(__('[Discovery] Tentative DTLS %1$s:%2$d', __FILE__), $host, $port)
             );
             try {
                 $snapshot = $this->readSnapshot($host, $port, 5.0);
                 $this->log(
                     'info',
-                    '[Discovery] Appareil trouvé sur ' . $host . ':' . $port
-                    . ' en ' . $this->durationMs($started) . ' ms'
+                    sprintf(
+                        __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
+                        $host,
+                        $port,
+                        $this->durationMs($started)
+                    )
                 );
                 return $snapshot;
             } catch (Exception $exception) {
                 $lastError = $exception->getMessage();
                 $this->log(
                     $exhaustive ? 'info' : 'debug',
-                    '[Discovery] Échec ' . $host . ':' . $port
-                    . ' après ' . $this->durationMs($started) . ' ms : ' . $lastError
+                    sprintf(
+                        __('[Discovery] Échec %1$s:%2$d après %3$d ms : %4$s', __FILE__),
+                        $host,
+                        $port,
+                        $this->durationMs($started),
+                        $lastError
+                    )
                 );
             }
         }
-        $message =
-            'Aucun service LocalThings utilisable sur ' . $host
-            . ' (ports essayés : ' . implode(', ', $ports) . ')'
+        $message = sprintf(
+            __('Aucun service LocalThings utilisable sur %1$s (ports essayés : %2$s)', __FILE__),
+            $host,
+            implode(', ', $ports)
+        )
             . ($lastError !== '' ? ' : ' . $lastError : '');
         $this->log('warning', '[Discovery] ' . $message);
         throw new RuntimeException($message);
@@ -133,7 +152,10 @@ class LocalThingsDeviceClient
 
     private function executeUnlocked($host, $port, $recipe, $value, $bypassRemoteControl)
     {
-        $this->log('info', '[Command] Connexion à ' . $host . ':' . (int) $port);
+        $this->log(
+            'info',
+            sprintf(__('[Command] Connexion à %1$s:%2$d', __FILE__), $host, (int) $port)
+        );
         $session = $this->createSession($host, (int) $port);
         try {
             $session->connect(12.0);
@@ -141,11 +163,14 @@ class LocalThingsDeviceClient
             $remoteControlEnabled = $this->mapper->remoteControlEnabled($resources);
             $this->log(
                 'debug',
-                '[Command] Smart Control=' . ($remoteControlEnabled ? 'activé' : 'désactivé')
-                . ', contournement=' . ($bypassRemoteControl ? 'activé' : 'désactivé')
+                sprintf(
+                    __('[Command] Smart Control=%1$s, contournement=%2$s', __FILE__),
+                    $remoteControlEnabled ? __('activé', __FILE__) : __('désactivé', __FILE__),
+                    $bypassRemoteControl ? __('activé', __FILE__) : __('désactivé', __FILE__)
+                )
             );
             if (!$bypassRemoteControl && !$remoteControlEnabled) {
-                throw new LocalThingsCommandRejectedException('Smart Control est désactivé sur l’appareil');
+                throw new LocalThingsCommandRejectedException(__('Smart Control est désactivé sur l’appareil', __FILE__));
             }
             $write = $this->mapper->buildWrite($recipe, $value, $resources);
             $href = '/' . implode('/', $write['path']);
@@ -155,16 +180,20 @@ class LocalThingsDeviceClient
             );
             list($code, $response) = $session->post($write['path'], $write['body'], 15.0);
             if (($code >> 5) !== 2) {
-                throw new LocalThingsCommandRejectedException(
-                    'Écriture CoAP refusée (' . LocalThingsCoap::formatCode($code) . ')'
-                );
+                throw new LocalThingsCommandRejectedException(sprintf(
+                    __('Écriture CoAP refusée (%s)', __FILE__),
+                    LocalThingsCoap::formatCode($code)
+                ));
             }
             $responseRepresentation = $this->decodeRepresentation($response);
             if ($responseRepresentation !== null) {
                 $this->log(
                     'debug',
-                    '[Command] Réponse ' . LocalThingsCoap::formatCode($code)
-                    . ' ' . $this->jsonForLog($responseRepresentation)
+                    sprintf(
+                        __('[Command] Réponse %1$s %2$s', __FILE__),
+                        LocalThingsCoap::formatCode($code),
+                        $this->jsonForLog($responseRepresentation)
+                    )
                 );
             }
 
@@ -174,9 +203,10 @@ class LocalThingsDeviceClient
                 $write['body']
             );
             if ($verification['matched'] === false) {
-                throw new LocalThingsCommandRejectedException(
-                    'Commande acquittée mais non appliquée par l’appareil sur ' . $href
-                );
+                throw new LocalThingsCommandRejectedException(sprintf(
+                    __('Commande acquittée mais non appliquée par l’appareil sur %s', __FILE__),
+                    $href
+                ));
             }
 
             $representation = $verification['representation'];
@@ -204,9 +234,10 @@ class LocalThingsDeviceClient
     {
         $this->log(
             'debug',
-            '[Command] Stabilisation pendant '
-            . $this->formatDelaySeconds(self::WRITE_SETTLE_DELAY_US)
-            . ' s avant vérification'
+            sprintf(
+                __('[Command] Stabilisation pendant %s s avant vérification', __FILE__),
+                $this->formatDelaySeconds(self::WRITE_SETTLE_DELAY_US)
+            )
         );
         usleep(self::WRITE_SETTLE_DELAY_US);
 
@@ -215,22 +246,31 @@ class LocalThingsDeviceClient
             if (($code >> 5) !== 2) {
                 $this->log(
                     'warning',
-                    '[Command] Vérification GET refusée : ' . LocalThingsCoap::formatCode($code)
+                    sprintf(
+                        __('[Command] Vérification GET refusée : %s', __FILE__),
+                        LocalThingsCoap::formatCode($code)
+                    )
                 );
                 return array('matched' => null, 'representation' => null);
             }
             $representation = $this->decodeRepresentation($payload);
             if (!is_array($representation)) {
-                $this->log('warning', '[Command] Réponse de vérification CBOR invalide');
+                $this->log(
+                    'warning',
+                    __('[Command] Réponse de vérification CBOR invalide', __FILE__)
+                );
                 return array('matched' => null, 'representation' => null);
             }
             $matched = $this->representationContains($representation, $expected);
             $this->log(
                 $matched ? 'info' : 'warning',
-                '[Command] Vérification /' . implode('/', $path)
-                . ' expected=' . $this->jsonForLog($expected)
-                . ' actual=' . $this->jsonForLog($representation)
-                . ' applied=' . ($matched ? 'yes' : 'no')
+                sprintf(
+                    __('[Command] Vérification /%1$s expected=%2$s actual=%3$s applied=%4$s', __FILE__),
+                    implode('/', $path),
+                    $this->jsonForLog($expected),
+                    $this->jsonForLog($representation),
+                    $matched ? 'yes' : 'no'
+                )
             );
             if ($matched) {
                 return array('matched' => true, 'representation' => $representation);
@@ -238,16 +278,18 @@ class LocalThingsDeviceClient
         } catch (Exception $exception) {
             $this->log(
                 'warning',
-                '[Command] Vérification indisponible : ' . $exception->getMessage()
+                __('[Command] Vérification indisponible : ', __FILE__) . $exception->getMessage()
             );
             return array('matched' => null, 'representation' => null);
         }
 
         $this->log(
             'warning',
-            '[Command] Écriture non appliquée après stabilisation; expected='
-            . $this->jsonForLog($expected)
-            . ' actual=' . $this->jsonForLog($representation)
+            sprintf(
+                __('[Command] Écriture non appliquée après stabilisation; expected=%1$s actual=%2$s', __FILE__),
+                $this->jsonForLog($expected),
+                $this->jsonForLog($representation)
+            )
         );
         return array('matched' => false, 'representation' => $representation);
     }
@@ -386,14 +428,18 @@ class LocalThingsDeviceClient
     private function readSnapshot($host, $port, $handshakeTimeout)
     {
         if (!in_array((int) $port, self::PROBE_PORTS, true)) {
-            throw new InvalidArgumentException('Port LocalThings invalide');
+            throw new InvalidArgumentException(__('Port LocalThings invalide', __FILE__));
         }
         $session = $this->createSession($host, (int) $port);
         try {
             $this->log(
                 'debug',
-                '[DTLS] Négociation avec ' . $host . ':' . (int) $port
-                . ', timeout=' . (float) $handshakeTimeout . ' s'
+                sprintf(
+                    __('[DTLS] Négociation avec %1$s:%2$d, timeout=%3$s s', __FILE__),
+                    $host,
+                    (int) $port,
+                    (string) (float) $handshakeTimeout
+                )
             );
             $session->connect($handshakeTimeout);
             $resources = $this->readResources($session);
@@ -422,12 +468,15 @@ class LocalThingsDeviceClient
             $mapped = $this->mapper->map($resources);
             $this->log(
                 'info',
-                '[Discovery] Identité reçue : modèle=' . ($model !== '' ? $model : 'inconnu')
-                . ', type=' . $deviceType
-                . ', série=' . ($serial !== '' ? $this->redactIdentifier($serial) : 'non communiquée')
-                . ', identifiant=' . $this->redactIdentifier($deviceId)
-                . ', ressources=' . count($resources)
-                . ', commandes=' . count($mapped['entities'])
+                sprintf(
+                    __('[Discovery] Identité reçue : modèle=%1$s, type=%2$s, série=%3$s, identifiant=%4$s, ressources=%5$d, commandes=%6$d', __FILE__),
+                    $model !== '' ? $model : __('inconnu', __FILE__),
+                    $deviceType,
+                    $serial !== '' ? $this->redactIdentifier($serial) : __('non communiquée', __FILE__),
+                    $this->redactIdentifier($deviceId),
+                    count($resources),
+                    count($mapped['entities'])
+                )
             );
             return array(
                 'device' => array(
@@ -461,11 +510,14 @@ class LocalThingsDeviceClient
             . ', ' . strlen($payload) . ' octets'
         );
         if (($code >> 5) !== 2 || $payload === '') {
-            throw new RuntimeException('GET /device/0 a répondu ' . LocalThingsCoap::formatCode($code));
+            throw new RuntimeException(sprintf(
+                __('GET /device/0 a répondu %s', __FILE__),
+                LocalThingsCoap::formatCode($code)
+            ));
         }
         $decoded = LocalThingsCbor::decode($payload);
         if (!is_array($decoded)) {
-            throw new RuntimeException('La réponse /device/0 est invalide');
+            throw new RuntimeException(__('La réponse /device/0 est invalide', __FILE__));
         }
         $resources = array();
         foreach (array_slice($decoded, 1) as $entry) {
@@ -475,9 +527,12 @@ class LocalThingsDeviceClient
             $resources[(string) $entry['href']] = $entry['rep'];
         }
         if (count($resources) === 0) {
-            throw new RuntimeException('La réponse /device/0 ne contient aucune ressource');
+            throw new RuntimeException(__('La réponse /device/0 ne contient aucune ressource', __FILE__));
         }
-        $this->log('debug', '[CBOR] /device/0 décodé : ' . count($resources) . ' ressources');
+        $this->log(
+            'debug',
+            sprintf(__('[CBOR] /device/0 décodé : %d ressources', __FILE__), count($resources))
+        );
         return $resources;
     }
 
@@ -555,7 +610,7 @@ class LocalThingsDeviceClient
     {
         $host = trim((string) $host);
         if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
-            throw new InvalidArgumentException('Adresse IPv4 invalide');
+            throw new InvalidArgumentException(__('Adresse IPv4 invalide', __FILE__));
         }
         return $host;
     }
@@ -651,7 +706,7 @@ class LocalThingsDeviceClient
         $path = $this->lockDirectory . '/port-' . self::sourcePort($host) . '.lock';
         $handle = fopen($path, 'c');
         if (!is_resource($handle)) {
-            throw new RuntimeException('Création du verrou LocalThings impossible');
+            throw new RuntimeException(__('Création du verrou LocalThings impossible', __FILE__));
         }
         @chmod($path, 0600);
         $deadline = microtime(true) + 60.0;
@@ -664,7 +719,7 @@ class LocalThingsDeviceClient
         } while (!$locked && microtime(true) < $deadline);
         if (!$locked) {
             fclose($handle);
-            throw new RuntimeException('Un autre échange LocalThings est déjà en cours');
+            throw new RuntimeException(__('Un autre échange LocalThings est déjà en cours', __FILE__));
         }
         try {
             return call_user_func($callback);
@@ -713,14 +768,14 @@ class LocalThingsDiscovery
         foreach (array_slice((array) $values, 0, self::MAX_NETWORKS) as $value) {
             $value = trim((string) $value);
             if (!preg_match('#^([0-9.]+)/([0-9]{1,2})$#', $value, $matches)) {
-                throw new InvalidArgumentException('Réseau CIDR invalide : ' . $value);
+                throw new InvalidArgumentException(__('Réseau CIDR invalide : ', __FILE__) . $value);
             }
             if (filter_var($matches[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
-                throw new InvalidArgumentException('Adresse de réseau invalide : ' . $value);
+                throw new InvalidArgumentException(__('Adresse de réseau invalide : ', __FILE__) . $value);
             }
             $prefix = (int) $matches[2];
             if ($prefix < 22 || $prefix > 30) {
-                throw new InvalidArgumentException('Utilisez un réseau IPv4 compris entre /22 et /30 : ' . $value);
+                throw new InvalidArgumentException(__('Utilisez un réseau IPv4 compris entre /22 et /30 : ', __FILE__) . $value);
             }
             $network = self::canonicalNetwork($matches[1], $prefix);
             $networks[] = $network . '/' . $prefix;
@@ -728,10 +783,10 @@ class LocalThingsDiscovery
         }
         $networks = array_values(array_unique($networks));
         if (count($networks) === 0) {
-            throw new InvalidArgumentException('Aucun réseau de découverte configuré');
+            throw new InvalidArgumentException(__('Aucun réseau de découverte configuré', __FILE__));
         }
         if ($hostCount > self::MAX_HOSTS) {
-            throw new InvalidArgumentException('La découverte est limitée à ' . self::MAX_HOSTS . ' adresses');
+            throw new InvalidArgumentException(__('La découverte est limitée à ', __FILE__) . self::MAX_HOSTS . ' adresses');
         }
         return $networks;
     }
@@ -746,13 +801,13 @@ class LocalThingsDiscovery
                 || strpos($value, '127.') === 0
                 || $value === '0.0.0.0'
             ) {
-                throw new InvalidArgumentException('Adresse IPv4 locale invalide : ' . $value);
+                throw new InvalidArgumentException(__('Adresse IPv4 locale invalide : ', __FILE__) . $value);
             }
             $hosts[] = $value;
         }
         $hosts = array_values(array_unique($hosts));
         if (count($hosts) > self::MAX_HOSTS) {
-            throw new InvalidArgumentException('La découverte est limitée à ' . self::MAX_HOSTS . ' adresses');
+            throw new InvalidArgumentException(__('La découverte est limitée à ', __FILE__) . self::MAX_HOSTS . ' adresses');
         }
         return $hosts;
     }
@@ -760,14 +815,14 @@ class LocalThingsDiscovery
     public static function start($statusPath, $workerPath, $networks = array(), $hosts = array(), $logPath = null)
     {
         if (!function_exists('proc_open')) {
-            throw new RuntimeException('La fonction PHP proc_open est désactivée');
+            throw new RuntimeException(__('La fonction PHP proc_open est désactivée', __FILE__));
         }
         if (!function_exists('exec')) {
-            throw new RuntimeException('La fonction PHP exec est désactivée');
+            throw new RuntimeException(__('La fonction PHP exec est désactivée', __FILE__));
         }
         $statusPath = (string) $statusPath;
         if (self::readStatus($statusPath)['running'] ?? false) {
-            throw new RuntimeException('Une découverte LocalThings est déjà en cours');
+            throw new RuntimeException(__('Une découverte LocalThings est déjà en cours', __FILE__));
         }
         $hosts = count($hosts) > 0 ? self::validateHosts($hosts) : array();
         $networks = count($hosts) === 0 ? self::validateNetworks($networks) : array();
@@ -796,7 +851,7 @@ class LocalThingsDiscovery
             @unlink($jobPath);
             $status = self::newStatus(false);
             $status['finished'] = time();
-            $status['errors'][] = 'Le processus PHP de découverte n’a pas démarré';
+            $status['errors'][] = __('Le processus PHP de découverte n’a pas démarré', __FILE__);
             self::writeJson($statusPath, $status);
             throw new RuntimeException($status['errors'][0]);
         }
@@ -810,21 +865,28 @@ class LocalThingsDiscovery
     {
         $job = json_decode((string) file_get_contents($jobPath), true);
         if (!is_array($job) || empty($job['status_path'])) {
-            throw new InvalidArgumentException('Tâche de découverte invalide');
+            throw new InvalidArgumentException(__('Tâche de découverte invalide', __FILE__));
         }
         $statusPath = (string) $job['status_path'];
         $directHosts = self::validateHosts($job['hosts'] ?? array());
         self::log(
             $logger,
             'info',
-            '[Discovery] Tâche PHP démarrée, mode=' . (count($directHosts) > 0 ? 'adresse directe' : 'réseau')
+            sprintf(
+                __('[Discovery] Tâche PHP démarrée, mode=%s', __FILE__),
+                count($directHosts) > 0 ? __('adresse directe', __FILE__) : __('réseau', __FILE__)
+            )
         );
         try {
             if (count($directHosts) > 0) {
                 $candidates = $directHosts;
             } else {
                 $networks = self::validateNetworks($job['networks'] ?? array());
-                self::log($logger, 'info', '[Discovery] Réseaux analysés : ' . implode(', ', $networks));
+                self::log(
+                    $logger,
+                    'info',
+                    sprintf(__('[Discovery] Réseaux analysés : %s', __FILE__), implode(', ', $networks))
+                );
                 $allHosts = self::expandNetworks($networks);
                 $neighbours = array_values(array_intersect(self::neighbourHosts(), $allHosts));
                 $reachable = self::reachableHosts(array_values(array_diff($allHosts, $neighbours)));
@@ -842,16 +904,22 @@ class LocalThingsDiscovery
                 self::log(
                     $logger,
                     'debug',
-                    '[Discovery] Détection réseau : voisins avant=' . count($neighbours)
-                    . ', ping=' . count($reachable)
-                    . ', voisins après=' . count($neighboursAfterSweep)
+                    sprintf(
+                        __('[Discovery] Détection réseau : voisins avant=%1$d, ping=%2$d, voisins après=%3$d', __FILE__),
+                        count($neighbours),
+                        count($reachable),
+                        count($neighboursAfterSweep)
+                    )
                 );
             }
             sort($candidates, SORT_NATURAL);
             self::log(
                 $logger,
                 'info',
-                '[Discovery] ' . count($candidates) . ' adresse(s) candidate(s) après détection réseau'
+                sprintf(
+                    __('[Discovery] %d adresse(s) candidate(s) après détection réseau', __FILE__),
+                    count($candidates)
+                )
             );
             $status = self::newStatus(true);
             $status['candidates'] = count($candidates);
@@ -863,17 +931,30 @@ class LocalThingsDiscovery
                 self::log(
                     $logger,
                     'info',
-                    '[Discovery] Hôte ' . ($index + 1) . '/' . count($candidates) . ' : ' . $host
+                    sprintf(
+                        __('[Discovery] Hôte %1$d/%2$d : %3$s', __FILE__),
+                        $index + 1,
+                        count($candidates),
+                        $host
+                    )
                 );
                 try {
                     $snapshot = call_user_func($probe, $host, count($directHosts) > 0);
                     $status['found'][] = $snapshot['device'] ?? array('host' => $host);
-                    self::log($logger, 'info', '[Discovery] ' . $host . ' enregistré dans Jeedom');
+                    self::log(
+                        $logger,
+                        'info',
+                        sprintf(__('[Discovery] %s enregistré dans Jeedom', __FILE__), $host)
+                    );
                 } catch (Exception $exception) {
                     self::log(
                         $logger,
                         count($directHosts) > 0 ? 'warning' : 'debug',
-                        '[Discovery] ' . $host . ' ignoré : ' . $exception->getMessage()
+                        sprintf(
+                            __('[Discovery] %1$s ignoré : %2$s', __FILE__),
+                            $host,
+                            $exception->getMessage()
+                        )
                     );
                     if (count($directHosts) > 0) {
                         $status['errors'][] = $host . ' : ' . $exception->getMessage();
@@ -890,8 +971,11 @@ class LocalThingsDiscovery
             self::log(
                 $logger,
                 'info',
-                '[Discovery] Tâche terminée : ' . count($status['found']) . ' appareil(s) trouvé(s), '
-                . count($status['errors']) . ' erreur(s)'
+                sprintf(
+                    __('[Discovery] Tâche terminée : %1$d appareil(s) trouvé(s), %2$d erreur(s)', __FILE__),
+                    count($status['found']),
+                    count($status['errors'])
+                )
             );
         } catch (Exception $exception) {
             $status = self::readStatus($statusPath);
@@ -900,7 +984,11 @@ class LocalThingsDiscovery
             $status['progress'] = 100;
             $status['errors'][] = $exception->getMessage();
             self::writeJson($statusPath, $status);
-            self::log($logger, 'error', '[Discovery] Tâche interrompue : ' . $exception->getMessage());
+            self::log(
+                $logger,
+                'error',
+                __('[Discovery] Tâche interrompue : ', __FILE__) . $exception->getMessage()
+            );
         } finally {
             @unlink($jobPath);
         }
@@ -1028,7 +1116,7 @@ class LocalThingsDiscovery
     {
         $value = ip2long($address);
         if ($value === false) {
-            throw new InvalidArgumentException('Adresse IPv4 invalide');
+            throw new InvalidArgumentException(__('Adresse IPv4 invalide', __FILE__));
         }
         return (int) sprintf('%u', $value);
     }
@@ -1057,7 +1145,7 @@ class LocalThingsDiscovery
         $temporary = $path . '.tmp';
         $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false || file_put_contents($temporary, $json, LOCK_EX) === false) {
-            throw new RuntimeException('Écriture de l’état de découverte impossible');
+            throw new RuntimeException(__('Écriture de l’état de découverte impossible', __FILE__));
         }
         @chmod($temporary, 0600);
         rename($temporary, $path);
@@ -1075,7 +1163,7 @@ class LocalThingsDiscovery
                 return $candidate;
             }
         }
-        throw new RuntimeException('Interpréteur PHP CLI introuvable');
+        throw new RuntimeException(__('Interpréteur PHP CLI introuvable', __FILE__));
     }
 
     private static function log($logger, $level, $message)

@@ -1,6 +1,6 @@
 <?php
 if (!isConnect('admin')) {
-    throw new Exception('{{401 - Accès non autorisé}}');
+    throw new Exception(__('401 - Accès non autorisé', __FILE__));
 }
 $plugin = plugin::byId('localthings');
 sendVarToJS('eqType', $plugin->getId());
@@ -169,14 +169,14 @@ $eqLogics = eqLogic::byType($plugin->getId());
                             <legend><i class="fas fa-info-circle"></i> {{Informations locales}}</legend>
                             <?php
                             $fields = array(
-                                'device_id' => '{{Identifiant}}',
-                                'host' => '{{Adresse IP}}',
-                                'port' => '{{Port DTLS}}',
-                                'manufacturer' => '{{Fabricant}}',
-                                'model' => '{{Modèle}}',
-                                'device_type' => '{{Type}}',
-                                'last_communication' => '{{Dernière communication}}',
-                                'last_error' => '{{Dernière erreur}}',
+                                'device_id' => __('Identifiant', __FILE__),
+                                'host' => __('Adresse IP', __FILE__),
+                                'port' => __('Port DTLS', __FILE__),
+                                'manufacturer' => __('Fabricant', __FILE__),
+                                'model' => __('Modèle', __FILE__),
+                                'device_type' => __('Type', __FILE__),
+                                'last_communication' => __('Dernière communication', __FILE__),
+                                'last_error' => __('Dernière erreur', __FILE__),
                             );
                             foreach ($fields as $key => $label) { ?>
                                 <div class="form-group">

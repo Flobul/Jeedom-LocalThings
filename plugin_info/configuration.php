@@ -97,22 +97,25 @@ sendVarToJS('version', localthings::$_pluginVersion);
             </div>
         </div>
         <div class="form-group">
-            <label class="col-sm-4 control-label">{{Intervalle de rafraîchissement}}</label>
+            <label class="col-sm-4 control-label">
+                {{Intervalle lorsque l’appareil est en ligne}}
+                <sup><i class="fas fa-question-circle" title="{{Cet intervalle est utilisé après une communication réussie avec l’appareil.}}"></i></sup>
+            </label>
             <div class="col-sm-3">
-                <select class="configKey form-control" data-l1key="poll_interval">
+                <select class="configKey form-control" data-l1key="poll_interval_online">
                     <option value="10s">{{10 secondes}}</option>
                     <option value="20s">{{20 secondes}}</option>
                     <option value="30s">{{30 secondes}}</option>
-                    <option value="1">1 min</option>
-                    <option value="2">2 min</option>
-                    <option value="3">3 min</option>
-                    <option value="4">4 min</option>
-                    <option value="5">5 min</option>
-                    <option value="10">10 min</option>
-                    <option value="15">15 min</option>
-                    <option value="20">20 min</option>
-                    <option value="30">30 min</option>
-                    <option value="45">45 min</option>
+                    <option value="1">1 {{min}}</option>
+                    <option value="2">2 {{min}}</option>
+                    <option value="3">3 {{min}}</option>
+                    <option value="4">4 {{min}}</option>
+                    <option value="5">5 {{min}}</option>
+                    <option value="10">10 {{min}}</option>
+                    <option value="15">15 {{min}}</option>
+                    <option value="20">20 {{min}}</option>
+                    <option value="30">30 {{min}}</option>
+                    <option value="45">45 {{min}}</option>
                     <option value="60">{{1 heure}}</option>
                     <option value="120">{{2 heures}}</option>
                     <option value="240">{{4 heures}}</option>
@@ -121,7 +124,39 @@ sendVarToJS('version', localthings::$_pluginVersion);
                     <option value="1440">{{1 jour}}</option>
                 </select>
                 <p class="help-block">
-                    {{Le rafraîchissement toutes les 10 secondes sollicite davantage la pile DTLS de l’appareil. Réservez-le aux équipements qui nécessitent un suivi rapproché.}}
+                    {{Un intervalle court permet de suivre rapidement les changements d’un appareil disponible.}}
+                </p>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="col-sm-4 control-label">
+                {{Intervalle lorsque l’appareil est hors ligne}}
+                <sup><i class="fas fa-question-circle" title="{{Cet intervalle est utilisé après un échec de communication, jusqu’au retour de l’appareil.}}"></i></sup>
+            </label>
+            <div class="col-sm-3">
+                <select class="configKey form-control" data-l1key="poll_interval_offline">
+                    <option value="10s">{{10 secondes}}</option>
+                    <option value="20s">{{20 secondes}}</option>
+                    <option value="30s">{{30 secondes}}</option>
+                    <option value="1">1 {{min}}</option>
+                    <option value="2">2 {{min}}</option>
+                    <option value="3">3 {{min}}</option>
+                    <option value="4">4 {{min}}</option>
+                    <option value="5">5 {{min}}</option>
+                    <option value="10">10 {{min}}</option>
+                    <option value="15">15 {{min}}</option>
+                    <option value="20">20 {{min}}</option>
+                    <option value="30">30 {{min}}</option>
+                    <option value="45">45 {{min}}</option>
+                    <option value="60">{{1 heure}}</option>
+                    <option value="120">{{2 heures}}</option>
+                    <option value="240">{{4 heures}}</option>
+                    <option value="360">{{6 heures}}</option>
+                    <option value="720">{{12 heures}}</option>
+                    <option value="1440">{{1 jour}}</option>
+                </select>
+                <p class="help-block">
+                    {{Un intervalle plus long évite de solliciter inutilement un appareil indisponible.}}
                 </p>
             </div>
         </div>

@@ -14,115 +14,115 @@ class LocalThingsWidget
     {
         $profiles = array(
             'washer' => array(
-                'label' => 'Lave-linge',
+                'label' => __('Lave-linge', __FILE__),
                 'icon' => 'fas fa-tshirt',
                 'accent' => '#2f80ed',
-                'settings_title' => 'Programme et options',
+                'settings_title' => __('Programme et options', __FILE__),
                 'features' => array('washer_cycle', 'washer_', 'course_', 'watertemperature', 'spinlevel', 'rinsecycles', 'bubblesoak', 'prewash', 'addwash', 'intensivesetting', 'delay_'),
             ),
             'dryer' => array(
-                'label' => 'Sèche-linge',
+                'label' => __('Sèche-linge', __FILE__),
                 'icon' => 'fas fa-wind',
                 'accent' => '#7b61ff',
-                'settings_title' => 'Programme et options',
+                'settings_title' => __('Programme et options', __FILE__),
                 'features' => array('dryer_cycle', 'dryer_', 'course_', 'drylevel', 'dryingtime', 'wrinkle', 'sanitize', 'delay_'),
             ),
             'dishwasher' => array(
-                'label' => 'Lave-vaisselle',
+                'label' => __('Lave-vaisselle', __FILE__),
                 'icon' => 'fas fa-utensils',
                 'accent' => '#00a8a8',
-                'settings_title' => 'Programme et options',
+                'settings_title' => __('Programme et options', __FILE__),
                 'features' => array('dishwasher', 'course_', 'stormwash', 'sanitize', 'autodoor', 'dry', 'delay_'),
             ),
             'air_dresser' => array(
-                'label' => 'Armoire de soin',
+                'label' => __('Armoire de soin', __FILE__),
                 'icon' => 'fas fa-tshirt',
                 'accent' => '#7768ae',
-                'settings_title' => 'Programme et options',
+                'settings_title' => __('Programme et options', __FILE__),
                 'features' => array('course_', 'mode_', 'steam', 'dry', 'wrinkle', 'sanitize', 'delay_'),
             ),
             'refrigerator' => array(
-                'label' => 'Réfrigérateur',
+                'label' => __('Réfrigérateur', __FILE__),
                 'icon' => 'fas fa-snowflake',
                 'accent' => '#2684ff',
-                'settings_title' => 'Réglages',
+                'settings_title' => __('Réglages', __FILE__),
                 'features' => array('refriger', 'icemaker', 'rapidfridge', 'rapidfreez', 'autofill', 'sabbath', 'temperature_desired', 'mode_'),
             ),
             'airconditioner' => array(
-                'label' => 'Climatiseur',
+                'label' => __('Climatiseur', __FILE__),
                 'icon' => 'fas fa-temperature-low',
                 'accent' => '#00a6fb',
-                'settings_title' => 'Réglages',
+                'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'mode_', 'temperature_desired', 'wind_strength', 'airflow', 'fanspeed', 'oscillation', 'humidity_desired'),
             ),
             'air_purifier' => array(
-                'label' => 'Purificateur d’air',
+                'label' => __('Purificateur d’air', __FILE__),
                 'icon' => 'fas fa-wind',
                 'accent' => '#16a085',
-                'settings_title' => 'Réglages',
+                'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'mode_', 'wind_strength', 'airflow', 'fanspeed', 'ailevel'),
             ),
             'dehumidifier' => array(
-                'label' => 'Déshumidificateur',
+                'label' => __('Déshumidificateur', __FILE__),
                 'icon' => 'fas fa-tint',
                 'accent' => '#168aad',
-                'settings_title' => 'Réglages',
+                'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'mode_', 'fanspeed', 'humidity_desired', 'humidity_target'),
             ),
             'water_purifier' => array(
-                'label' => 'Purificateur d’eau',
+                'label' => __('Purificateur d’eau', __FILE__),
                 'icon' => 'fas fa-tint',
                 'accent' => '#0096c7',
-                'settings_title' => 'Réglages',
+                'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'mode_', 'water', 'temperature_desired', 'autofill'),
             ),
             'oven' => array(
-                'label' => 'Four',
+                'label' => __('Four', __FILE__),
                 'icon' => 'fas fa-fire-alt',
                 'accent' => '#e76f51',
-                'settings_title' => 'Cuisson',
+                'settings_title' => __('Cuisson', __FILE__),
                 'features' => array('oven_', 'course_', 'mode_', 'temperature_desired', 'timer', 'preheat', 'steam', 'cavity'),
             ),
             'range' => array(
-                'label' => 'Cuisinière',
+                'label' => __('Cuisinière', __FILE__),
                 'icon' => 'fas fa-fire-alt',
                 'accent' => '#e76f51',
-                'settings_title' => 'Cuisson',
+                'settings_title' => __('Cuisson', __FILE__),
                 'features' => array('oven_', 'cooktop', 'course_', 'mode_', 'temperature_desired', 'timer', 'preheat', 'steam', 'cavity'),
             ),
             'microwave' => array(
-                'label' => 'Four micro-ondes',
+                'label' => __('Four micro-ondes', __FILE__),
                 'icon' => 'fas fa-wave-square',
                 'accent' => '#f4a261',
-                'settings_title' => 'Cuisson',
+                'settings_title' => __('Cuisson', __FILE__),
                 'features' => array('microwave', 'course_', 'mode_', 'timer', 'powerlevel', 'temperature_desired'),
             ),
             'cooktop' => array(
-                'label' => 'Table de cuisson',
+                'label' => __('Table de cuisson', __FILE__),
                 'icon' => 'fas fa-fire',
                 'accent' => '#ef476f',
-                'settings_title' => 'Cuisson',
+                'settings_title' => __('Cuisson', __FILE__),
                 'features' => array('cooktop', 'mode_', 'specialzone', 'burner', 'powerlevel', 'temperature_desired'),
             ),
             'induction_cooktop' => array(
-                'label' => 'Table à induction',
+                'label' => __('Table à induction', __FILE__),
                 'icon' => 'fas fa-fire',
                 'accent' => '#ef476f',
-                'settings_title' => 'Cuisson',
+                'settings_title' => __('Cuisson', __FILE__),
                 'features' => array('cooktop', 'mode_', 'specialzone', 'burner', 'powerlevel', 'temperature_desired'),
             ),
             'range_hood' => array(
-                'label' => 'Hotte',
+                'label' => __('Hotte', __FILE__),
                 'icon' => 'fas fa-fan',
                 'accent' => '#6c757d',
-                'settings_title' => 'Réglages',
+                'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'hood_', 'fanspeed', 'upperlamp', 'sound'),
             ),
             'vacuum_station' => array(
-                'label' => 'Station d’aspirateur',
+                'label' => __('Station d’aspirateur', __FILE__),
                 'icon' => 'fas fa-broom',
                 'accent' => '#5f6f52',
-                'settings_title' => 'Nettoyage',
+                'settings_title' => __('Nettoyage', __FILE__),
                 'features' => array('power_', 'mode_', 'clean', 'station', 'dust', 'empty'),
             ),
         );
@@ -133,10 +133,10 @@ class LocalThingsWidget
         }
         return array(
             'type' => 'unknown',
-            'label' => 'Appareil Samsung',
+            'label' => __('Appareil Samsung', __FILE__),
             'icon' => 'fas fa-microchip',
             'accent' => '#6c7a89',
-            'settings_title' => 'Commandes',
+            'settings_title' => __('Commandes', __FILE__),
             'features' => array('power_', 'mode_', 'temperature_desired', 'course_', 'cycle', 'delay_'),
         );
     }
@@ -393,10 +393,10 @@ class LocalThingsWidget
         $presentation = array('label' => '', 'icon' => '', 'asset' => '');
 
         if (strpos($identity, 'washer_cycle') !== false) {
-            return array('label' => 'Programme', 'icon' => '', 'asset' => 'washerCycle.svg');
+            return array('label' => __('Programme', __FILE__), 'icon' => '', 'asset' => 'washerCycle.svg');
         }
         if (strpos($identity, 'dryer_cycle') !== false) {
-            return array('label' => 'Programme', 'icon' => '', 'asset' => 'dryerCycle.svg');
+            return array('label' => __('Programme', __FILE__), 'icon' => '', 'asset' => 'dryerCycle.svg');
         }
         if (
             strpos($identity, 'course_') !== false
@@ -404,91 +404,91 @@ class LocalThingsWidget
             && preg_match('/(?:option_course|\bcycle\b|\bprogramme\b)/', $identity)
         ) {
             if (in_array($deviceType, array('oven', 'range', 'microwave'), true)) {
-                return array('label' => 'Programme', 'icon' => '', 'asset' => 'ovenMode.svg');
+                return array('label' => __('Programme', __FILE__), 'icon' => '', 'asset' => 'ovenMode.svg');
             }
             $icon = $deviceType === 'dishwasher' ? 'fas fa-utensils' : 'fas fa-tshirt';
-            return array('label' => 'Programme', 'icon' => $icon, 'asset' => '');
+            return array('label' => __('Programme', __FILE__), 'icon' => $icon, 'asset' => '');
         }
         if (strpos($identity, 'watertemperature') !== false) {
-            return array('label' => 'Température', 'icon' => '', 'asset' => 'temperature.svg');
+            return array('label' => __('Température', __FILE__), 'icon' => '', 'asset' => 'temperature.svg');
         }
         if (strpos($identity, 'rinsecycles') !== false) {
-            return array('label' => 'Rinçages', 'icon' => '', 'asset' => 'rinseCycles.svg');
+            return array('label' => __('Rinçages', __FILE__), 'icon' => '', 'asset' => 'rinseCycles.svg');
         }
         if (strpos($identity, 'spinlevel') !== false) {
-            return array('label' => 'Essorage', 'icon' => '', 'asset' => 'spinLevel.svg');
+            return array('label' => __('Essorage', __FILE__), 'icon' => '', 'asset' => 'spinLevel.svg');
         }
         if (strpos($identity, 'bubblesoak') !== false) {
-            return array('label' => 'Bubble Soak', 'icon' => '', 'asset' => 'washerBubbleSoak.svg');
+            return array('label' => __('Bubble Soak', __FILE__), 'icon' => '', 'asset' => 'washerBubbleSoak.svg');
         }
         if (strpos($identity, 'addwash') !== false) {
-            return array('label' => 'Add Wash', 'icon' => 'fas fa-plus-circle', 'asset' => '');
+            return array('label' => __('Add Wash', __FILE__), 'icon' => 'fas fa-plus-circle', 'asset' => '');
         }
         if (strpos($identity, 'delay_') !== false) {
-            return array('label' => 'Départ différé', 'icon' => 'fas fa-clock', 'asset' => '');
+            return array('label' => __('Départ différé', __FILE__), 'icon' => 'fas fa-clock', 'asset' => '');
         }
         if (strpos($identity, 'temperature_desired') !== false || strpos($identity, 'setpoint') !== false) {
-            return array('label' => 'Température', 'icon' => '', 'asset' => 'temperature.svg');
+            return array('label' => __('Température', __FILE__), 'icon' => '', 'asset' => 'temperature.svg');
         }
         if (strpos($identity, 'drylevel') !== false) {
-            return array('label' => 'Niveau de séchage', 'icon' => 'fas fa-layer-group', 'asset' => '');
+            return array('label' => __('Niveau de séchage', __FILE__), 'icon' => 'fas fa-layer-group', 'asset' => '');
         }
         if (preg_match('/(?:fanspeed|wind_strength|airflow)/', $identity)) {
-            return array('label' => 'Ventilation', 'icon' => '', 'asset' => 'fanMode.svg');
+            return array('label' => __('Ventilation', __FILE__), 'icon' => '', 'asset' => 'fanMode.svg');
         }
         if (preg_match('/(?:humidity_desired|humidity_target)/', $identity)) {
-            return array('label' => 'Humidité souhaitée', 'icon' => 'fas fa-tint', 'asset' => '');
+            return array('label' => __('Humidité souhaitée', __FILE__), 'icon' => 'fas fa-tint', 'asset' => '');
         }
         if (preg_match('/(?:dryingtime|timer)/', $identity)) {
-            return array('label' => 'Durée', 'icon' => 'fas fa-clock', 'asset' => '');
+            return array('label' => __('Durée', __FILE__), 'icon' => 'fas fa-clock', 'asset' => '');
         }
         if (strpos($identity, 'mode_') !== false && $group === 'settings') {
             if (in_array($deviceType, array('oven', 'range', 'microwave'), true)) {
-                return array('label' => 'Mode', 'icon' => '', 'asset' => 'ovenMode.svg');
+                return array('label' => __('Mode', __FILE__), 'icon' => '', 'asset' => 'ovenMode.svg');
             }
-            return array('label' => 'Mode', 'icon' => 'fas fa-cog', 'asset' => '');
+            return array('label' => __('Mode', __FILE__), 'icon' => 'fas fa-cog', 'asset' => '');
         }
         if (strpos($identity, 'icemaker') !== false) {
-            return array('label' => 'Glaçons', 'icon' => 'fas fa-cube', 'asset' => '');
+            return array('label' => __('Glaçons', __FILE__), 'icon' => 'fas fa-cube', 'asset' => '');
         }
         if (strpos($identity, 'rapidfreez') !== false) {
-            return array('label' => 'Congélation rapide', 'icon' => 'fas fa-snowflake', 'asset' => '');
+            return array('label' => __('Congélation rapide', __FILE__), 'icon' => 'fas fa-snowflake', 'asset' => '');
         }
         if (strpos($identity, 'rapidfridge') !== false) {
-            return array('label' => 'Refroidissement rapide', 'icon' => 'fas fa-temperature-low', 'asset' => '');
+            return array('label' => __('Refroidissement rapide', __FILE__), 'icon' => 'fas fa-temperature-low', 'asset' => '');
         }
         if (preg_match('/(?:upperlamp|displaylight)/', $identity)) {
-            return array('label' => 'Éclairage', 'icon' => 'fas fa-lightbulb', 'asset' => '');
+            return array('label' => __('Éclairage', __FILE__), 'icon' => 'fas fa-lightbulb', 'asset' => '');
         }
         if (preg_match('/(?:specialzone|burner|powerlevel)/', $identity)) {
-            return array('label' => 'Puissance', 'icon' => 'fas fa-fire', 'asset' => '');
+            return array('label' => __('Puissance', __FILE__), 'icon' => 'fas fa-fire', 'asset' => '');
         }
 
         $statusSlot = self::statusSlot($entityKey, $name);
         $statusPresentations = array(
-            'state' => array('label' => 'État', 'icon' => 'fas fa-info-circle', 'asset' => ''),
-            'remaining' => array('label' => 'Temps restant', 'icon' => 'fas fa-hourglass-half', 'asset' => ''),
-            'progress' => array('label' => 'Progression', 'icon' => 'fas fa-tasks', 'asset' => ''),
-            'power' => array('label' => 'Alimentation', 'icon' => 'fas fa-power-off', 'asset' => ''),
-            'temperature' => array('label' => 'Température', 'icon' => 'fas fa-thermometer-half', 'asset' => ''),
-            'door' => array('label' => 'Porte', 'icon' => 'fas fa-door-open', 'asset' => ''),
-            'humidity' => array('label' => 'Humidité', 'icon' => 'fas fa-tint', 'asset' => ''),
-            'quality' => array('label' => 'Qualité de l’air', 'icon' => 'fas fa-wind', 'asset' => ''),
-            'level' => array('label' => 'Niveau', 'icon' => 'fas fa-water', 'asset' => ''),
+            'state' => array('label' => __('État', __FILE__), 'icon' => 'fas fa-info-circle', 'asset' => ''),
+            'remaining' => array('label' => __('Temps restant', __FILE__), 'icon' => 'fas fa-hourglass-half', 'asset' => ''),
+            'progress' => array('label' => __('Progression', __FILE__), 'icon' => 'fas fas kiko-reload-arrow', 'asset' => ''),
+            'power' => array('label' => __('Alimentation', __FILE__), 'icon' => 'fas fa-power-off', 'asset' => ''),
+            'temperature' => array('label' => __('Température', __FILE__), 'icon' => 'fas fa-thermometer-half', 'asset' => ''),
+            'door' => array('label' => __('Porte', __FILE__), 'icon' => 'fas fa-door-open', 'asset' => ''),
+            'humidity' => array('label' => __('Humidité', __FILE__), 'icon' => 'fas fa-tint', 'asset' => ''),
+            'quality' => array('label' => __('Qualité de l’air', __FILE__), 'icon' => 'fas fa-wind', 'asset' => ''),
+            'level' => array('label' => __('Niveau', __FILE__), 'icon' => 'fas fa-water', 'asset' => ''),
         );
         if ($group === 'status' && isset($statusPresentations[$statusSlot])) {
             return $statusPresentations[$statusSlot];
         }
 
         $maintenancePresentations = array(
-            'drum_clean_status' => array('label' => 'Nettoyage du tambour', 'icon' => 'fas fa-bell', 'asset' => ''),
-            'drum_clean_threshold' => array('label' => 'Alerte après', 'icon' => 'fas fa-bullseye', 'asset' => ''),
-            'washing_count' => array('label' => 'Depuis le dernier nettoyage', 'icon' => 'fas fa-redo', 'asset' => ''),
-            'filter' => array('label' => 'État du filtre', 'icon' => 'fas fa-filter', 'asset' => ''),
-            'detergent' => array('label' => 'Lessive', 'icon' => 'fas fa-soap', 'asset' => ''),
-            'softener' => array('label' => 'Adoucissant', 'icon' => 'fas fa-tint', 'asset' => ''),
-            'alarm' => array('label' => 'État des alarmes', 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
-            'cleaning' => array('label' => 'Nettoyage', 'icon' => 'fas fa-magic', 'asset' => ''),
+            'drum_clean_status' => array('label' => __('Nettoyage du tambour', __FILE__), 'icon' => 'fas fa-bell', 'asset' => ''),
+            'drum_clean_threshold' => array('label' => __('Alerte après', __FILE__), 'icon' => 'fas fa-bullseye', 'asset' => ''),
+            'washing_count' => array('label' => __('Depuis le dernier nettoyage', __FILE__), 'icon' => 'fas fa-redo', 'asset' => ''),
+            'filter' => array('label' => __('État du filtre', __FILE__), 'icon' => 'fas fa-filter', 'asset' => ''),
+            'detergent' => array('label' => __('Lessive', __FILE__), 'icon' => 'fas fa-soap', 'asset' => ''),
+            'softener' => array('label' => __('Adoucissant', __FILE__), 'icon' => 'fas fa-tint', 'asset' => ''),
+            'alarm' => array('label' => __('Alarmes actives', __FILE__), 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
+            'cleaning' => array('label' => __('Nettoyage', __FILE__), 'icon' => 'fas fa-magic', 'asset' => ''),
         );
         $maintenanceRole = self::maintenanceRole($entityKey, $name);
         if ($group === 'maintenance' && isset($maintenancePresentations[$maintenanceRole])) {
@@ -496,9 +496,9 @@ class LocalThingsWidget
         }
 
         $energyPresentations = array(
-            'current_power' => array('label' => 'Puissance actuelle', 'icon' => 'fas fa-bolt', 'asset' => ''),
-            'total_energy' => array('label' => 'Consommation totale', 'icon' => 'fas fa-chart-line', 'asset' => ''),
-            'cycle_energy' => array('label' => 'Consommation du cycle', 'icon' => 'fas fa-leaf', 'asset' => ''),
+            'current_power' => array('label' => __('Puissance actuelle', __FILE__), 'icon' => 'fas fa-bolt', 'asset' => ''),
+            'total_energy' => array('label' => __('Consommation totale', __FILE__), 'icon' => 'fas fa-chart-line', 'asset' => ''),
+            'cycle_energy' => array('label' => __('Consommation du cycle', __FILE__), 'icon' => 'fas fa-leaf', 'asset' => ''),
         );
         $energyRole = self::energyRole($entityKey, $name);
         if ($group === 'energy' && isset($energyPresentations[$energyRole])) {
@@ -507,15 +507,15 @@ class LocalThingsWidget
 
         if ($group === 'details') {
             $detailPresentations = array(
-                'child_lock' => array('label' => 'Sécurité enfants', 'icon' => 'fas fa-lock', 'asset' => ''),
-                'remote_control' => array('label' => 'Contrôle à distance', 'icon' => 'fas fa-wifi', 'asset' => ''),
-                'filter' => array('label' => 'État du filtre', 'icon' => 'fas fa-filter', 'asset' => ''),
-                'detergent' => array('label' => 'Lessive restante', 'icon' => 'fas fa-soap', 'asset' => ''),
-                'softener' => array('label' => 'Adoucissant restant', 'icon' => 'fas fa-tint', 'asset' => ''),
-                'detergent_alert' => array('label' => 'Alerte de lessive', 'icon' => 'fas fa-bell', 'asset' => ''),
-                'softener_alert' => array('label' => 'Alerte d’adoucissant', 'icon' => 'fas fa-bell', 'asset' => ''),
-                'alert' => array('label' => 'Alerte', 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
-                'tank' => array('label' => 'Réservoir', 'icon' => 'fas fa-water', 'asset' => ''),
+                'child_lock' => array('label' => __('Sécurité enfants', __FILE__), 'icon' => 'fas fa-lock', 'asset' => ''),
+                'remote_control' => array('label' => __('Contrôle à distance', __FILE__), 'icon' => 'fas fa-wifi', 'asset' => ''),
+                'filter' => array('label' => __('État du filtre', __FILE__), 'icon' => 'fas fa-filter', 'asset' => ''),
+                'detergent' => array('label' => __('Lessive restante', __FILE__), 'icon' => 'fas fa-soap', 'asset' => ''),
+                'softener' => array('label' => __('Adoucissant restant', __FILE__), 'icon' => 'fas fa-tint', 'asset' => ''),
+                'detergent_alert' => array('label' => __('Alerte de lessive', __FILE__), 'icon' => 'fas fa-bell', 'asset' => ''),
+                'softener_alert' => array('label' => __('Alerte d’adoucissant', __FILE__), 'icon' => 'fas fa-bell', 'asset' => ''),
+                'alert' => array('label' => __('Alerte', __FILE__), 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
+                'tank' => array('label' => __('Réservoir', __FILE__), 'icon' => 'fas fa-water', 'asset' => ''),
             );
             $detailRole = self::detailRole($entityKey, $name);
             if (isset($detailPresentations[$detailRole])) {

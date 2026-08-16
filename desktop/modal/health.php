@@ -1,6 +1,6 @@
 <?php
 if (!isConnect('admin')) {
-    throw new Exception('{{401 - Accès non autorisé}}');
+    throw new Exception(__('401 - Accès non autorisé', __FILE__));
 }
 
 function localthingsHealthEscape($value)
@@ -90,7 +90,7 @@ foreach ($eqLogics as $eqLogic) {
                     <tr<?php echo $eqLogic->getIsEnable() ? '' : ' style="opacity:.55;"'; ?>>
                         <td>
                             <a href="<?php echo localthingsHealthEscape($eqLogic->getLinkToConfiguration()); ?>">
-                                <?php echo localthingsHealthEscape($eqLogic->getHumanName(true)); ?>
+                                <?php echo localthingsHealthEscape($eqLogic->getHumanName()); ?>
                             </a>
                         </td>
                         <td><?php echo localthingsHealthEscape($eqLogic->getConfiguration('device_type', '')); ?></td>

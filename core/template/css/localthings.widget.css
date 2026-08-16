@@ -158,6 +158,38 @@
   box-shadow: 0 3px 9px rgba(0, 0, 0, .1);
 }
 
+.localthings-widget-maintenance-alarm {
+  flex-basis: 100%;
+  min-height: 68px;
+  border-color: rgba(240, 165, 43, .3);
+  background: rgba(240, 165, 43, .08);
+}
+
+.localthings-widget-maintenance-alarm .localthings-widget-command-icon {
+  background: #e19a23;
+}
+
+.localthings-widget-maintenance-alarm .localthings-widget-command-content {
+  text-align: left;
+}
+
+.localthings-widget-maintenance-alarm .localthings-widget-command-label {
+  color: #b57918;
+  opacity: 1;
+}
+
+.localthings-widget-maintenance-alarm .cmd-widget .state,
+.localthings-widget-maintenance-alarm .cmd-widget .value {
+  display: block;
+  overflow: visible;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: left;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .localthings-widget-command-icon {
   display: flex;
   flex: 0 0 40px;

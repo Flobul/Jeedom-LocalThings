@@ -187,7 +187,11 @@
             var hourglass = remaining.querySelector('.localthings-widget-command-icon i');
             if (hourglass) hourglass.classList.toggle('fa-spin', operating);
         }
-        if (progress) progress.classList.toggle('localthings-status-active', operating);
+        if (progress) {
+            progress.classList.toggle('localthings-status-active', operating);
+            var progressBar = progress.querySelector('.localthings-widget-command-icon i');
+            if (progressBar) progressBar.classList.toggle('fa-spin', operating);
+        }
     };
     syncOperatingStatus();
     if (statusContainer && statusContainer.getAttribute('data-status-bound') !== '1'

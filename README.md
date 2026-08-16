@@ -101,10 +101,13 @@ plugin ne déduit jamais une action d'écriture à partir d'un simple état.
 Les informations numériques exprimées en pourcentage disposent également
 d'une barre de progression qui suit les mises à jour natives Jeedom.
 
-Le rafraîchissement automatique peut descendre à 10 secondes. Cette fréquence
-infra-minute utilise une tâche cron Jeedom en mode démon ; les intervalles
-historiques en minutes restent disponibles et la valeur par défaut reste de
-5 minutes.
+Le rafraîchissement automatique utilise deux cadences indépendantes. Chaque
+équipement emploie l'intervalle **en ligne** tant que sa dernière communication
+est réussie, puis l'intervalle **hors ligne** après un échec. Dès que
+l'appareil répond à nouveau, la cadence en ligne est rétablie automatiquement.
+Les deux intervalles peuvent descendre à 10 secondes grâce à une tâche cron
+Jeedom en mode démon. Pour une nouvelle installation, les valeurs par défaut
+sont de 1 minute en ligne et de 5 minutes hors ligne.
 
 ## Compatibilité
 

@@ -17,7 +17,7 @@ require_once __DIR__ . '/LocalThingsClient.php';
 
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.5';
+    public static $_pluginVersion = '0.4.6';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     private static function resourcePath()
@@ -109,7 +109,10 @@ class localthings extends eqLogic
         log::add(
             __CLASS__,
             'info',
-            '[Discovery] Découverte réseau demandée : ' . implode(', ', $networks)
+            sprintf(
+                __('[Discovery] Découverte réseau demandée : %s', __FILE__),
+                implode(', ', $networks)
+            )
         );
         $status = LocalThingsDiscovery::start(
             self::statusPath(),
@@ -121,7 +124,10 @@ class localthings extends eqLogic
         log::add(
             __CLASS__,
             'info',
-            '[Discovery] Tâche PHP lancée, PID=' . (int) ($status['worker_pid'] ?? 0)
+            sprintf(
+                __('[Discovery] Tâche PHP lancée, PID=%d', __FILE__),
+                (int) ($status['worker_pid'] ?? 0)
+            )
         );
         return $status;
     }
@@ -132,7 +138,10 @@ class localthings extends eqLogic
         log::add(
             __CLASS__,
             'info',
-            '[Discovery] Ajout manuel demandé pour ' . trim((string) $host)
+            sprintf(
+                __('[Discovery] Ajout manuel demandé pour %s', __FILE__),
+                trim((string) $host)
+            )
         );
         $status = LocalThingsDiscovery::start(
             self::statusPath(),
@@ -144,7 +153,10 @@ class localthings extends eqLogic
         log::add(
             __CLASS__,
             'info',
-            '[Discovery] Tâche PHP manuelle lancée, PID=' . (int) ($status['worker_pid'] ?? 0)
+            sprintf(
+                __('[Discovery] Tâche PHP manuelle lancée, PID=%d', __FILE__),
+                (int) ($status['worker_pid'] ?? 0)
+            )
         );
         return $status;
     }
@@ -516,7 +528,7 @@ class localthings extends eqLogic
         }
         $fixedValue = $action['fixed_value'] ?? null;
         if (is_bool($fixedValue)) {
-            return __($fixedValue ? 'Activer' : 'Désactiver', __FILE__) . ' ' . $infoName;
+            return ($fixedValue ? __('Activer', __FILE__) : __('Désactiver', __FILE__)) . ' ' . $infoName;
         }
         return $infoName . ' - ' . $actionName;
     }
@@ -582,13 +594,32 @@ class localthings extends eqLogic
     public static function pollIntervalSeconds($value = null)
     {
         if ($value === null) {
-            $value = config::byKey('poll_interval', __CLASS__, 5);
+            $legacy = config::byKey('poll_interval', __CLASS__, 5);
+            $value = config::byKey('poll_interval_online', __CLASS__, $legacy);
         }
         $value = strtolower(trim((string) $value));
         if (preg_match('/^(\d+)s$/', $value, $matches) === 1) {
             return max(10, min(86400, (int) $matches[1]));
         }
         return max(1, min(1440, (int) $value)) * 60;
+    }
+
+    public static function pollIntervalSecondsForState($online)
+    {
+        $legacy = config::byKey('poll_interval', __CLASS__, 5);
+        $key = $online ? 'poll_interval_online' : 'poll_interval_offline';
+        $fallback = $online ? $legacy : 5;
+        $value = config::byKey($key, __CLASS__, $fallback);
+        if (trim((string) $value) === '') {
+            $value = $fallback;
+        }
+        return self::pollIntervalSeconds($value);
+    }
+
+    private static function equipmentIsOnline($eqLogic)
+    {
+        $connected = $eqLogic->getCmd('info', 'connected');
+        return is_object($connected) && (int) $connected->execCmd() === 1;
     }
 
     private static function pollIntervalLabel($seconds)
@@ -608,9 +639,10 @@ class localthings extends eqLogic
 
     public static function poll()
     {
-        $interval = self::pollIntervalSeconds();
         $now = time();
         foreach (self::byType(__CLASS__, true) as $eqLogic) {
+            $online = self::equipmentIsOnline($eqLogic);
+            $interval = self::pollIntervalSecondsForState($online);
             $lastRefresh = (int) $eqLogic->getConfiguration('last_refresh', 0);
             if ($lastRefresh > 0 && $now - $lastRefresh < $interval) {
                 continue;
@@ -692,7 +724,8 @@ class localthings extends eqLogic
         if ($certificateExpires !== false) {
             $certificateResult .= ' (' . date('Y-m-d', $certificateExpires) . ')';
         }
-        $pollInterval = self::pollIntervalSeconds();
+        $pollIntervalOnline = self::pollIntervalSecondsForState(true);
+        $pollIntervalOffline = self::pollIntervalSecondsForState(false);
         $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
         $pollRunning = is_object($pollCron) && $pollCron->running();
         return array(
@@ -725,7 +758,10 @@ class localthings extends eqLogic
             ),
             array(
                 'test' => __('Rafraîchissement automatique', __FILE__),
-                'result' => self::pollIntervalLabel($pollInterval)
+                'result' => __('En ligne', __FILE__) . ' : '
+                    . self::pollIntervalLabel($pollIntervalOnline)
+                    . ' / ' . __('Hors ligne', __FILE__) . ' : '
+                    . self::pollIntervalLabel($pollIntervalOffline)
                     . ' - ' . ($pollRunning ? 'OK' : __('Démon arrêté', __FILE__)),
                 'advice' => $pollRunning ? '' : __('Démarrez le démon du plugin', __FILE__),
                 'state' => $pollRunning,
@@ -775,7 +811,11 @@ class localthings extends eqLogic
             log::add(
                 __CLASS__,
                 'info',
-                '[Test] Communication réussie avec ' . $this->getHumanName() . ' en ' . $duration . ' ms'
+                sprintf(
+                    __('[Test] Communication réussie avec %1$s en %2$d ms', __FILE__),
+                    $this->getHumanName(),
+                    $duration
+                )
             );
             return array(
                 'success' => true,
@@ -792,8 +832,11 @@ class localthings extends eqLogic
             log::add(
                 __CLASS__,
                 'warning',
-                '[Test] Échec de communication avec ' . $this->getHumanName()
-                . ' : ' . $exception->getMessage()
+                sprintf(
+                    __('[Test] Échec de communication avec %1$s : %2$s', __FILE__),
+                    $this->getHumanName(),
+                    $exception->getMessage()
+                )
             );
             throw $exception;
         }
@@ -984,14 +1027,14 @@ class localthings extends eqLogic
         $replace['#health_display#'] = is_object($health) && $health->getIsVisible() ? 'inline-block' : 'none';
         $replace['#health_online#'] = $healthValue === 1 ? 'true' : 'false';
         $replace['#health_status#'] = htmlspecialchars(
-            __($healthValue === 1 ? 'En ligne' : 'Hors ligne', __FILE__),
+            $healthValue === 1 ? __('En ligne', __FILE__) : __('Hors ligne', __FILE__),
             ENT_QUOTES,
             'UTF-8'
         );
         $replace['#health_icon#'] = $healthValue === 1 ? 'fas fa-link' : 'fas fa-unlink';
         $replace['#health_color#'] = $healthValue === 1 ? '#4caf50' : '#d9534f';
         $replace['#device_type#'] = htmlspecialchars($profile['type'], ENT_QUOTES, 'UTF-8');
-        $replace['#settings_title#'] = htmlspecialchars(__($profile['settings_title'], __FILE__), ENT_QUOTES, 'UTF-8');
+        $replace['#settings_title#'] = htmlspecialchars($profile['settings_title'], ENT_QUOTES, 'UTF-8');
         $replace['#status_commands#'] = $renderedSections['status'];
         $replace['#settings_commands#'] = $renderedSections['settings'];
         $replace['#control_commands#'] = $renderedSections['controls'];
@@ -1104,7 +1147,7 @@ class localthings extends eqLogic
                 array('1', 'true', 'on', 'enable', 'enabled', 'yes'),
                 true
             );
-            $stateLabel = __($checked ? 'Activé' : 'Désactivé', __FILE__);
+            $stateLabel = $checked ? __('Activé', __FILE__) : __('Désactivé', __FILE__);
             $html = '<label class="localthings-widget-switch">'
                 . '<input type="checkbox" class="localthings-toggle-input" role="switch"'
                 . ' data-on-cmd_id="' . (int) $onCommand->getId() . '"'
@@ -1145,6 +1188,20 @@ class localthings extends eqLogic
 
     private function renderWidgetCommand($command, $version, $group, $deviceType)
     {
+        $entityKey = (string) $command->getConfiguration('entityKey', '');
+        if (
+            $group === 'maintenance'
+            && $command->getType() === 'info'
+            && LocalThingsWidget::maintenanceRole($entityKey, $command->getName()) === 'alarm'
+        ) {
+            $rawAlarm = $command->execCmd();
+            $alarmSummary = (new LocalThingsMapper())->formatAlarmSummary($rawAlarm);
+            if ((string) $alarmSummary !== (string) $rawAlarm) {
+                // Migre immédiatement les anciennes valeurs JSON sans attendre
+                // le prochain rafraîchissement complet de l'appareil.
+                $command->event($alarmSummary);
+            }
+        }
         $html = $command->toHtml($version);
         if (!is_string($html) || $html === '') {
             return '';
@@ -1193,7 +1250,7 @@ class localthings extends eqLogic
         $label = $presentation['label'] === ''
             ? ''
             : '<span class="localthings-widget-command-label">'
-                . htmlspecialchars(__($presentation['label'], __FILE__), ENT_QUOTES, 'UTF-8') . '</span>';
+                . htmlspecialchars($presentation['label'], ENT_QUOTES, 'UTF-8') . '</span>';
         if ($isPercentage && $label === '') {
             $label = '<span class="localthings-widget-command-label">'
                 . htmlspecialchars($command->getName(), ENT_QUOTES, 'UTF-8') . '</span>';
@@ -1214,6 +1271,14 @@ class localthings extends eqLogic
         $visualClass = $visual !== '' || $label !== '' || $percentage !== ''
             ? ' localthings-widget-command-presented'
             : '';
+        $maintenanceClass = '';
+        if ($group === 'maintenance') {
+            $maintenanceRole = LocalThingsWidget::maintenanceRole($entityKey, $command->getName());
+            if ($maintenanceRole !== '') {
+                $maintenanceClass = ' localthings-widget-maintenance-'
+                    . preg_replace('/[^a-z0-9_-]/i', '', $maintenanceRole);
+            }
+        }
         $statusClass = $statusSlot === '' ? '' : ' localthings-widget-status-' . $statusSlot;
         $statusAttributes = '';
         if ($statusSlot !== '') {
@@ -1227,7 +1292,7 @@ class localthings extends eqLogic
             }
         }
         return '<div class="localthings-widget-command localthings-widget-command-' . $subType
-            . $visualClass . $statusClass
+            . $visualClass . $statusClass . $maintenanceClass
             . '" data-command-group="' . $group . '" data-cmd_id="' . (int) $command->getId() . '"'
             . $statusAttributes . '>'
             . $visual . '<div class="localthings-widget-command-content">'

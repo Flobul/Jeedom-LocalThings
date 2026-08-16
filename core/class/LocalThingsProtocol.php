@@ -49,13 +49,13 @@ class LocalThingsCbor
         if (is_object($value)) {
             return self::encode(get_object_vars($value));
         }
-        throw new InvalidArgumentException('Type CBOR non pris en charge');
+        throw new InvalidArgumentException(__('Type CBOR non pris en charge', __FILE__));
     }
 
     public static function decode($data, &$consumed = null)
     {
         if (!is_string($data) || $data === '') {
-            throw new InvalidArgumentException('Données CBOR vides');
+            throw new InvalidArgumentException(__('Données CBOR vides', __FILE__));
         }
         $offset = 0;
         $value = self::decodeValue($data, $offset, false);
@@ -71,13 +71,13 @@ class LocalThingsCbor
             if ($allowBreak) {
                 return self::breakMarker();
             }
-            throw new UnexpectedValueException('Marqueur CBOR break inattendu');
+            throw new UnexpectedValueException(__('Marqueur CBOR break inattendu', __FILE__));
         }
 
         $major = $initial >> 5;
         $additional = $initial & 0x1F;
         if ($additional === 31 && !in_array($major, array(2, 3, 4, 5), true)) {
-            throw new UnexpectedValueException('Longueur CBOR indéfinie invalide');
+            throw new UnexpectedValueException(__('Longueur CBOR indéfinie invalide', __FILE__));
         }
 
         switch ($major) {
@@ -99,7 +99,7 @@ class LocalThingsCbor
             case 7:
                 return self::decodeSimple($data, $offset, $additional);
         }
-        throw new UnexpectedValueException('Type CBOR inconnu');
+        throw new UnexpectedValueException(__('Type CBOR inconnu', __FILE__));
     }
 
     private static function decodeString($data, &$offset, $additional, $expectedMajor)
@@ -123,7 +123,7 @@ class LocalThingsCbor
             $major = $initial >> 5;
             $chunkAdditional = $initial & 0x1F;
             if ($major !== $expectedMajor || $chunkAdditional === 31) {
-                throw new UnexpectedValueException('Fragment CBOR de type incorrect');
+                throw new UnexpectedValueException(__('Fragment CBOR de type incorrect', __FILE__));
             }
             $length = self::readLength($data, $offset, $chunkAdditional);
             self::requireBytes($data, $offset, $length);
@@ -204,7 +204,7 @@ class LocalThingsCbor
                 $offset += 8;
                 return $value;
             case 31:
-                throw new UnexpectedValueException('Marqueur CBOR break inattendu');
+                throw new UnexpectedValueException(__('Marqueur CBOR break inattendu', __FILE__));
             default:
                 return $additional;
         }
@@ -250,20 +250,20 @@ class LocalThingsCbor
             $parts = unpack('Nhigh/Nlow', substr($data, $offset, 8));
             $offset += 8;
             if (PHP_INT_SIZE < 8 || $parts['high'] > 0x7FFFFFFF) {
-                throw new OverflowException('Entier CBOR hors capacité PHP');
+                throw new OverflowException(__('Entier CBOR hors capacité PHP', __FILE__));
             }
             return ($parts['high'] << 32) | $parts['low'];
         }
         if ($additional === 31) {
             return null;
         }
-        throw new UnexpectedValueException('Longueur CBOR réservée');
+        throw new UnexpectedValueException(__('Longueur CBOR réservée', __FILE__));
     }
 
     private static function encodeHead($major, $value)
     {
         if (!is_int($value) || $value < 0) {
-            throw new InvalidArgumentException('Longueur CBOR invalide');
+            throw new InvalidArgumentException(__('Longueur CBOR invalide', __FILE__));
         }
         $prefix = $major << 5;
         if ($value < 24) {
@@ -296,7 +296,7 @@ class LocalThingsCbor
     private static function requireBytes($data, $offset, $length)
     {
         if ($length < 0 || $offset < 0 || strlen($data) - $offset < $length) {
-            throw new UnderflowException('Données CBOR tronquées');
+            throw new UnderflowException(__('Données CBOR tronquées', __FILE__));
         }
     }
 
@@ -339,10 +339,10 @@ class LocalThingsCoap
     {
         $tokenLength = strlen($token);
         if ($tokenLength > 8) {
-            throw new InvalidArgumentException('Jeton CoAP trop long');
+            throw new InvalidArgumentException(__('Jeton CoAP trop long', __FILE__));
         }
         if ($type < 0 || $type > 3 || $code < 0 || $code > 255) {
-            throw new InvalidArgumentException('En-tête CoAP invalide');
+            throw new InvalidArgumentException(__('En-tête CoAP invalide', __FILE__));
         }
         $header = chr(0x40 | (($type & 0x03) << 4) | $tokenLength)
             . chr($code)
@@ -357,16 +357,16 @@ class LocalThingsCoap
     public static function parse($data)
     {
         if (!is_string($data) || strlen($data) < 4) {
-            throw new UnderflowException('Trame CoAP tronquée');
+            throw new UnderflowException(__('Trame CoAP tronquée', __FILE__));
         }
         $first = ord($data[0]);
         $version = $first >> 6;
         if ($version !== 1) {
-            throw new UnexpectedValueException('Version CoAP non prise en charge');
+            throw new UnexpectedValueException(__('Version CoAP non prise en charge', __FILE__));
         }
         $tokenLength = $first & 0x0F;
         if ($tokenLength > 8 || strlen($data) < 4 + $tokenLength) {
-            throw new UnexpectedValueException('Longueur de jeton CoAP invalide');
+            throw new UnexpectedValueException(__('Longueur de jeton CoAP invalide', __FILE__));
         }
 
         $result = array(
@@ -392,7 +392,7 @@ class LocalThingsCoap
             $delta = self::decodeExtended($data, $offset, $byte >> 4);
             $optionLength = self::decodeExtended($data, $offset, $byte & 0x0F);
             if ($offset + $optionLength > $length) {
-                throw new UnderflowException('Option CoAP tronquée');
+                throw new UnderflowException(__('Option CoAP tronquée', __FILE__));
             }
             $number = $previous + $delta;
             $result['options'][] = array(
@@ -462,7 +462,7 @@ class LocalThingsCoap
             return 0;
         }
         if ($length > 4) {
-            throw new OverflowException('Option CoAP entière trop grande');
+            throw new OverflowException(__('Option CoAP entière trop grande', __FILE__));
         }
         $result = 0;
         for ($index = 0; $index < $length; $index++) {
@@ -475,7 +475,7 @@ class LocalThingsCoap
     {
         $value = (int) $value;
         if ($value < 0) {
-            throw new InvalidArgumentException('Option CoAP négative');
+            throw new InvalidArgumentException(__('Option CoAP négative', __FILE__));
         }
         if ($value === 0) {
             return '';
@@ -517,12 +517,12 @@ class LocalThingsCoap
         foreach ($indexed as $row) {
             $option = $row['option'];
             if (!is_array($option) || count($option) < 2) {
-                throw new InvalidArgumentException('Option CoAP invalide');
+                throw new InvalidArgumentException(__('Option CoAP invalide', __FILE__));
             }
             $number = (int) $option[0];
             $value = (string) $option[1];
             if ($number < $previous) {
-                throw new InvalidArgumentException('Ordre des options CoAP invalide');
+                throw new InvalidArgumentException(__('Ordre des options CoAP invalide', __FILE__));
             }
             list($deltaNibble, $deltaExtension) = self::encodeExtended($number - $previous);
             list($lengthNibble, $lengthExtension) = self::encodeExtended(strlen($value));
@@ -546,7 +546,7 @@ class LocalThingsCoap
         if ($value <= 65804) {
             return array(14, pack('n', $value - 269));
         }
-        throw new OverflowException('Option CoAP trop volumineuse');
+        throw new OverflowException(__('Option CoAP trop volumineuse', __FILE__));
     }
 
     private static function decodeExtended($data, &$offset, $nibble)
@@ -556,19 +556,19 @@ class LocalThingsCoap
         }
         if ($nibble === 13) {
             if ($offset >= strlen($data)) {
-                throw new UnderflowException('Extension CoAP tronquée');
+                throw new UnderflowException(__('Extension CoAP tronquée', __FILE__));
             }
             return 13 + ord($data[$offset++]);
         }
         if ($nibble === 14) {
             if ($offset + 2 > strlen($data)) {
-                throw new UnderflowException('Extension CoAP tronquée');
+                throw new UnderflowException(__('Extension CoAP tronquée', __FILE__));
             }
             $value = unpack('n', substr($data, $offset, 2))[1];
             $offset += 2;
             return 269 + $value;
         }
-        throw new UnexpectedValueException('Nibble CoAP réservé');
+        throw new UnexpectedValueException(__('Nibble CoAP réservé', __FILE__));
     }
 }
 
@@ -602,7 +602,7 @@ class LocalThingsSession
         $pathSegments = $this->normalizePath($pathSegments);
         $pathLabel = '/' . implode('/', $pathSegments);
         $started = microtime(true);
-        $this->log('debug', '[CoAP] GET ' . $pathLabel . ' démarré');
+        $this->log('debug', sprintf(__('[CoAP] GET %s démarré', __FILE__), $pathLabel));
         $token = $this->nextToken();
         $payload = '';
         $block = 0;
@@ -643,9 +643,13 @@ class LocalThingsSession
             $payload .= (string) $response['payload'];
             $this->log(
                 'debug',
-                '[CoAP] GET ' . $pathLabel . ' bloc=' . $block
-                . ' -> ' . LocalThingsCoap::formatCode($lastCode)
-                . ', payload=' . strlen((string) $response['payload']) . ' octets'
+                sprintf(
+                    __('[CoAP] GET %1$s bloc=%2$d -> %3$s, payload=%4$d octets', __FILE__),
+                    $pathLabel,
+                    $block,
+                    LocalThingsCoap::formatCode($lastCode),
+                    strlen((string) $response['payload'])
+                )
             );
             if (($lastCode >> 5) !== 2) {
                 return array($lastCode, $payload);
@@ -660,15 +664,19 @@ class LocalThingsSession
             if (!$more) {
                 $this->log(
                     'debug',
-                    '[CoAP] GET ' . $pathLabel . ' terminé en '
-                    . (int) round((microtime(true) - $started) * 1000)
-                    . ' ms, ' . strlen($payload) . ' octets, ' . ($block + 1) . ' bloc(s)'
+                    sprintf(
+                        __('[CoAP] GET %1$s terminé en %2$d ms, %3$d octets, %4$d bloc(s)', __FILE__),
+                        $pathLabel,
+                        (int) round((microtime(true) - $started) * 1000),
+                        strlen($payload),
+                        $block + 1
+                    )
                 );
                 return array($lastCode, $payload);
             }
             $block++;
             if ($block > self::MAX_BLOCKS) {
-                throw new RuntimeException('Réponse CoAP supérieure à ' . self::MAX_BLOCKS . ' blocs');
+                throw new RuntimeException(__('Réponse CoAP supérieure à ', __FILE__) . self::MAX_BLOCKS . ' blocs');
             }
         }
     }
@@ -677,7 +685,7 @@ class LocalThingsSession
     {
         $pathSegments = $this->normalizePath($pathSegments);
         $pathLabel = '/' . implode('/', $pathSegments);
-        $this->log('debug', '[CoAP] POST ' . $pathLabel . ' démarré');
+        $this->log('debug', sprintf(__('[CoAP] POST %s démarré', __FILE__), $pathLabel));
         $token = $this->nextToken();
         $options = array();
         foreach ($pathSegments as $segment) {
@@ -700,9 +708,12 @@ class LocalThingsSession
         );
         $this->log(
             'debug',
-            '[CoAP] POST ' . $pathLabel . ' -> '
-            . LocalThingsCoap::formatCode((int) $response['code'])
-            . ', payload=' . strlen((string) $response['payload']) . ' octets'
+            sprintf(
+                __('[CoAP] POST %1$s -> %2$s, payload=%3$d octets', __FILE__),
+                $pathLabel,
+                LocalThingsCoap::formatCode((int) $response['code']),
+                strlen((string) $response['payload'])
+            )
         );
         return array((int) $response['code'], (string) $response['payload']);
     }
@@ -727,8 +738,12 @@ class LocalThingsSession
             $this->transport->write($packet);
             $this->log(
                 'debug',
-                '[CoAP] Requête MID=' . $messageId . ', tentative=' . $attempt
-                . ', paquet=' . strlen($packet) . ' octets'
+                sprintf(
+                    __('[CoAP] Requête MID=%1$d, tentative=%2$d, paquet=%3$d octets', __FILE__),
+                    $messageId,
+                    $attempt,
+                    strlen($packet)
+                )
             );
             $this->lastSend = microtime(true);
             $attemptDeadline = min($deadline, microtime(true) + self::RESPONSE_TIMEOUT);
@@ -772,9 +787,9 @@ class LocalThingsSession
             if (microtime(true) >= $deadline) {
                 break;
             }
-            $this->log('debug', '[CoAP] Pas de réponse, retransmission');
+            $this->log('debug', __('[CoAP] Pas de réponse, retransmission', __FILE__));
         }
-        throw new RuntimeException('Délai de réponse CoAP dépassé');
+        throw new RuntimeException(__('Délai de réponse CoAP dépassé', __FILE__));
     }
 
     private function matchesExpectedBlock($response, $expectedBlock)
@@ -792,8 +807,11 @@ class LocalThingsSession
         }
         $this->log(
             'debug',
-            '[CoAP] Réponse Block2 retardée ignorée : attendue=' . (int) $expectedBlock
-            . ', reçue=' . $actualBlock
+            sprintf(
+                __('[CoAP] Réponse Block2 retardée ignorée : attendue=%1$d, reçue=%2$d', __FILE__),
+                (int) $expectedBlock,
+                $actualBlock
+            )
         );
         return false;
     }

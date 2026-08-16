@@ -8,7 +8,7 @@ $options = getopt('', array('job:'));
 $jobPath = isset($options['job']) ? realpath((string) $options['job']) : false;
 $tmpRoot = realpath(jeedom::getTmpFolder('localthings'));
 if ($jobPath === false || $tmpRoot === false || strpos($jobPath, $tmpRoot . DIRECTORY_SEPARATOR) !== 0) {
-    fwrite(STDERR, "Tâche LocalThings invalide\n");
+    fwrite(STDERR, __('Tâche LocalThings invalide', __FILE__) . "\n");
     exit(1);
 }
 

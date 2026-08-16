@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.6
+
+- Séparation du rafraîchissement automatique en deux intervalles : un pour
+  les appareils en ligne et un pour les appareils hors ligne.
+- Sélection dynamique de la cadence pour chaque équipement selon le résultat
+  de sa dernière communication, avec retour automatique à la cadence en ligne
+  dès que l'appareil répond à nouveau.
+- Migration de l'ancien `poll_interval` vers le nouvel intervalle en ligne ;
+  l'intervalle hors ligne est initialisé à 5 minutes afin de limiter les
+  tentatives inutiles.
+- Affichage des deux cadences effectives dans la page Santé.
+- Normalisation des textes PHP et JavaScript selon les mécanismes de
+  traduction du core Jeedom.
+- Correction du nom des équipements dans la page Santé et présentation des
+  alarmes Samsung sous forme d’un résumé lisible dans l’onglet Entretien.
+
 ## 0.4.5
 
 - Harmonisation de la page de configuration avec les autres plugins Jeedom :

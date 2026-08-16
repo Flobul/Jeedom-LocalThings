@@ -17,7 +17,7 @@ class LocalThingsCertificateStore
     {
         $this->root = rtrim((string) $dataDirectory, '/');
         if ($this->root === '') {
-            throw new InvalidArgumentException('Répertoire de certificats invalide');
+            throw new InvalidArgumentException(__('Répertoire de certificats invalide', __FILE__));
         }
         $this->certificateDirectory = $this->root . '/certificates';
         $this->deviceDirectory = $this->root . '/devices';
@@ -61,7 +61,7 @@ class LocalThingsCertificateStore
             $certificate = $this->firstCertificate((string) file_get_contents($this->caCertificatePath));
             $parsed = openssl_x509_parse($certificate, false);
             if (!is_array($parsed)) {
-                throw new RuntimeException('Lecture du certificat impossible');
+                throw new RuntimeException(__('Lecture du certificat impossible', __FILE__));
             }
             $fingerprint = openssl_x509_fingerprint($certificate, 'sha256');
             $subjectParts = array();
@@ -91,28 +91,28 @@ class LocalThingsCertificateStore
         $certificatePem = (string) $certificatePem;
         $privateKeyPem = (string) $privateKeyPem;
         if (strlen($certificatePem) > self::MAX_BUNDLE_SIZE || strlen($privateKeyPem) > self::MAX_BUNDLE_SIZE) {
-            throw new InvalidArgumentException('Matériel PEM trop volumineux');
+            throw new InvalidArgumentException(__('Matériel PEM trop volumineux', __FILE__));
         }
         $certificates = $this->certificateBlocks($certificatePem);
         $keys = $this->privateKeyBlocks($privateKeyPem);
         if (count($certificates) === 0) {
-            throw new InvalidArgumentException('Aucun certificat PEM trouvé');
+            throw new InvalidArgumentException(__('Aucun certificat PEM trouvé', __FILE__));
         }
         if (count($keys) !== 1) {
-            throw new InvalidArgumentException('La clé privée PEM est absente ou ambiguë');
+            throw new InvalidArgumentException(__('La clé privée PEM est absente ou ambiguë', __FILE__));
         }
 
         $certificate = openssl_x509_read($certificates[0]);
         $key = openssl_pkey_get_private($keys[0]);
         if ($certificate === false || $key === false) {
-            throw new InvalidArgumentException('Certificat ou clé privée invalide');
+            throw new InvalidArgumentException(__('Certificat ou clé privée invalide', __FILE__));
         }
         $details = openssl_pkey_get_details($key);
         if (!is_array($details) || ($details['type'] ?? null) !== OPENSSL_KEYTYPE_RSA) {
-            throw new InvalidArgumentException('Le profil Samsung exige une clé privée RSA');
+            throw new InvalidArgumentException(__('Le profil Samsung exige une clé privée RSA', __FILE__));
         }
         if (!openssl_x509_check_private_key($certificate, $key)) {
-            throw new InvalidArgumentException('Le certificat et la clé privée ne correspondent pas');
+            throw new InvalidArgumentException(__('Le certificat et la clé privée ne correspondent pas', __FILE__));
         }
 
         $chain = implode("\n", array_map('trim', $certificates)) . "\n";
@@ -127,12 +127,12 @@ class LocalThingsCertificateStore
     {
         $bundle = (string) $bundle;
         if (strlen($bundle) > self::MAX_BUNDLE_SIZE) {
-            throw new InvalidArgumentException('Le bundle est anormalement volumineux');
+            throw new InvalidArgumentException(__('Le bundle est anormalement volumineux', __FILE__));
         }
         $certificates = $this->certificateBlocks($bundle);
         $keys = $this->privateKeyBlocks($bundle);
         if (count($certificates) === 0 || count($keys) !== 1) {
-            throw new InvalidArgumentException('Le bundle doit contenir une clé privée et au moins un certificat');
+            throw new InvalidArgumentException(__('Le bundle doit contenir une clé privée et au moins un certificat', __FILE__));
         }
         return $this->install(implode("\n", $certificates), $keys[0]);
     }
@@ -141,10 +141,10 @@ class LocalThingsCertificateStore
     {
         $sourceUrl = trim((string) $sourceUrl);
         if (stripos($sourceUrl, 'https://') !== 0) {
-            throw new InvalidArgumentException('La source du bundle doit utiliser HTTPS');
+            throw new InvalidArgumentException(__('La source du bundle doit utiliser HTTPS', __FILE__));
         }
         if (!function_exists('curl_init')) {
-            throw new RuntimeException('L’extension PHP cURL est nécessaire');
+            throw new RuntimeException(__('L’extension PHP cURL est nécessaire', __FILE__));
         }
         $buffer = '';
         $curl = curl_init($sourceUrl);
@@ -170,7 +170,7 @@ class LocalThingsCertificateStore
         curl_close($curl);
         if ($success !== true || $status !== 200) {
             throw new RuntimeException(
-                'Téléchargement du bundle impossible'
+                __('Téléchargement du bundle impossible', __FILE__)
                 . ($status > 0 ? ' (HTTP ' . $status . ')' : '')
                 . ($error !== '' ? ' : ' . $error : '')
             );
@@ -207,7 +207,7 @@ class LocalThingsCertificateStore
             $context
         );
         if (!is_resource($stream)) {
-            throw new RuntimeException('Lecture du certificat Samsung impossible : ' . $error);
+            throw new RuntimeException(__('Lecture du certificat Samsung impossible : ', __FILE__) . $error);
         }
         $parameters = stream_context_get_params($stream);
         fclose($stream);
@@ -220,7 +220,7 @@ class LocalThingsCertificateStore
             $certificates[] = $certificate;
         }
         if (count($certificates) === 0) {
-            throw new RuntimeException('Certificat Samsung distant absent');
+            throw new RuntimeException(__('Certificat Samsung distant absent', __FILE__));
         }
 
         $subjects = array();
@@ -240,10 +240,14 @@ class LocalThingsCertificateStore
                 $subjects[] = $subject;
             }
         }
-        throw new RuntimeException(
-            'UUID Samsung absent du certificat de passerelle'
-            . (count($subjects) > 0 ? ' (sujets reçus : ' . implode(' | ', array_unique($subjects)) . ')' : '')
-        );
+        $message = __('UUID Samsung absent du certificat de passerelle', __FILE__);
+        if (count($subjects) > 0) {
+            $message .= ' ' . sprintf(
+                __('(sujets reçus : %s)', __FILE__),
+                implode(' | ', array_unique($subjects))
+            );
+        }
+        throw new RuntimeException($message);
     }
 
     public static function extractSamsungUuid(array $parsedCertificate)
@@ -277,7 +281,7 @@ class LocalThingsCertificateStore
     public function mintLeaf($deviceId)
     {
         if (!$this->isConfigured()) {
-            throw new RuntimeException('Les certificats LocalThings ne sont pas configurés');
+            throw new RuntimeException(__('Les certificats LocalThings ne sont pas configurés', __FILE__));
         }
         $safeId = substr(hash('sha256', (string) $deviceId), 0, 24);
         $directory = $this->deviceDirectory . '/' . $safeId;
@@ -292,14 +296,14 @@ class LocalThingsCertificateStore
         $caCertificate = $this->firstCertificate($caPem);
         $caKey = openssl_pkey_get_private((string) file_get_contents($this->caKeyPath));
         if ($caCertificate === null || $caKey === false) {
-            throw new RuntimeException('Autorité de certification LocalThings invalide');
+            throw new RuntimeException(__('Autorité de certification LocalThings invalide', __FILE__));
         }
         $leafKey = openssl_pkey_new(array(
             'private_key_type' => OPENSSL_KEYTYPE_RSA,
             'private_key_bits' => 2048,
         ));
         if ($leafKey === false) {
-            throw new RuntimeException('Création de la clé cliente impossible');
+            throw new RuntimeException(__('Création de la clé cliente impossible', __FILE__));
         }
         $distinguishedName = array(
             'countryName' => 'KR',
@@ -309,7 +313,7 @@ class LocalThingsCertificateStore
         );
         $csr = openssl_csr_new($distinguishedName, $leafKey, array('digest_alg' => 'sha256'));
         if ($csr === false) {
-            throw new RuntimeException('Création de la requête de certificat impossible');
+            throw new RuntimeException(__('Création de la requête de certificat impossible', __FILE__));
         }
         $serial = random_int(1, 0x7FFFFFFF);
         $leafCertificate = openssl_csr_sign(
@@ -321,12 +325,12 @@ class LocalThingsCertificateStore
             $serial
         );
         if ($leafCertificate === false) {
-            throw new RuntimeException('Signature du certificat client impossible');
+            throw new RuntimeException(__('Signature du certificat client impossible', __FILE__));
         }
         $leafPem = '';
         $leafKeyPem = '';
         if (!openssl_x509_export($leafCertificate, $leafPem) || !openssl_pkey_export($leafKey, $leafKeyPem)) {
-            throw new RuntimeException('Export du certificat client impossible');
+            throw new RuntimeException(__('Export du certificat client impossible', __FILE__));
         }
         $this->ensureDirectory($directory);
         $this->atomicWrite($certificatePath, trim($leafPem) . "\n" . ltrim($caPem), 0600);
@@ -409,24 +413,24 @@ class LocalThingsCertificateStore
         $this->ensureDirectory($directory);
         $temporary = tempnam($directory, '.localthings-');
         if ($temporary === false) {
-            throw new RuntimeException('Création du fichier temporaire impossible');
+            throw new RuntimeException(__('Création du fichier temporaire impossible', __FILE__));
         }
         $handle = fopen($temporary, 'wb');
         if (!is_resource($handle)) {
             @unlink($temporary);
-            throw new RuntimeException('Ouverture du fichier temporaire impossible');
+            throw new RuntimeException(__('Ouverture du fichier temporaire impossible', __FILE__));
         }
         $written = fwrite($handle, $data);
         fflush($handle);
         fclose($handle);
         if ($written !== strlen($data)) {
             @unlink($temporary);
-            throw new RuntimeException('Écriture du fichier incomplète');
+            throw new RuntimeException(__('Écriture du fichier incomplète', __FILE__));
         }
         @chmod($temporary, $mode);
         if (!rename($temporary, $path)) {
             @unlink($temporary);
-            throw new RuntimeException('Installation atomique du fichier impossible');
+            throw new RuntimeException(__('Installation atomique du fichier impossible', __FILE__));
         }
         @chmod($path, $mode);
     }
@@ -434,7 +438,7 @@ class LocalThingsCertificateStore
     private function ensureDirectory($path)
     {
         if (!is_dir($path) && !mkdir($path, 0700, true) && !is_dir($path)) {
-            throw new RuntimeException('Création du répertoire impossible : ' . $path);
+            throw new RuntimeException(__('Création du répertoire impossible : ', __FILE__) . $path);
         }
         @chmod($path, 0700);
     }
@@ -568,7 +572,7 @@ class LocalThingsDtlsClient
         $options = array('suppress_errors' => true, 'bypass_shell' => true);
         $this->process = @proc_open($command, $descriptor, $this->pipes, null, null, $options);
         if (!is_resource($this->process)) {
-            throw new RuntimeException('Démarrage du client OpenSSL DTLS impossible');
+            throw new RuntimeException(__('Démarrage du client OpenSSL DTLS impossible', __FILE__));
         }
         foreach ($this->pipes as $pipe) {
             stream_set_blocking($pipe, false);
@@ -584,10 +588,10 @@ class LocalThingsDtlsClient
                 $this->close();
                 $this->log(
                     'warning',
-                    '[DTLS] Processus OpenSSL arrêté pendant le handshake'
+                    __('[DTLS] Processus OpenSSL arrêté pendant le handshake', __FILE__)
                     . ($error !== '' ? ' : ' . $error : '')
                 );
-                throw new RuntimeException('Connexion DTLS refusée' . ($error !== '' ? ' : ' . $error : ''));
+                throw new RuntimeException(__('Connexion DTLS refusée', __FILE__) . ($error !== '' ? ' : ' . $error : ''));
             }
             if (
                 stripos($this->stderr, 'CONNECTION ESTABLISHED') !== false
@@ -596,9 +600,10 @@ class LocalThingsDtlsClient
             ) {
                 $this->log(
                     'info',
-                    '[DTLS] Handshake réussi en '
-                    . (int) round((microtime(true) - $started) * 1000)
-                    . ' ms' . $this->handshakeSummary()
+                    sprintf(
+                        __('[DTLS] Handshake réussi en %d ms', __FILE__),
+                        (int) round((microtime(true) - $started) * 1000)
+                    ) . $this->handshakeSummary()
                 );
                 return;
             }
@@ -608,17 +613,18 @@ class LocalThingsDtlsClient
         $this->close();
         $this->log(
             'warning',
-            '[DTLS] Timeout du handshake après '
-            . (int) round((microtime(true) - $started) * 1000)
-            . ' ms' . ($error !== '' ? ' : ' . $error : '')
+            sprintf(
+                __('[DTLS] Timeout du handshake après %d ms', __FILE__),
+                (int) round((microtime(true) - $started) * 1000)
+            ) . ($error !== '' ? ' : ' . $error : '')
         );
-        throw new RuntimeException('Délai de négociation DTLS dépassé' . ($error !== '' ? ' : ' . $error : ''));
+        throw new RuntimeException(__('Délai de négociation DTLS dépassé', __FILE__) . ($error !== '' ? ' : ' . $error : ''));
     }
 
     public function write($data)
     {
         if (!is_resource($this->process) || $this->closed) {
-            throw new RuntimeException('Session DTLS fermée');
+            throw new RuntimeException(__('Session DTLS fermée', __FILE__));
         }
         $data = (string) $data;
         $offset = 0;
@@ -627,11 +633,11 @@ class LocalThingsDtlsClient
         while ($offset < $length) {
             $written = @fwrite($this->pipes[0], substr($data, $offset));
             if ($written === false) {
-                throw new RuntimeException('Écriture DTLS impossible : ' . $this->errorSummary());
+                throw new RuntimeException(__('Écriture DTLS impossible : ', __FILE__) . $this->errorSummary());
             }
             if ($written === 0) {
                 if (microtime(true) >= $deadline) {
-                    throw new RuntimeException('Délai d’écriture DTLS dépassé');
+                    throw new RuntimeException(__('Délai d’écriture DTLS dépassé', __FILE__));
                 }
                 usleep(10000);
                 continue;
@@ -639,7 +645,10 @@ class LocalThingsDtlsClient
             $offset += $written;
         }
         fflush($this->pipes[0]);
-        $this->log('debug', '[DTLS] ' . $length . ' octets applicatifs envoyés');
+        $this->log(
+            'debug',
+            sprintf(__('[DTLS] %d octets applicatifs envoyés', __FILE__), $length)
+        );
     }
 
     public function readFrame($timeout)
@@ -666,7 +675,7 @@ class LocalThingsDtlsClient
             $except = null;
             $selected = @stream_select($read, $write, $except, $seconds, $microseconds);
             if ($selected === false) {
-                throw new RuntimeException('Attente DTLS interrompue');
+                throw new RuntimeException(__('Attente DTLS interrompue', __FILE__));
             }
             if ($selected === 0) {
                 break;
@@ -678,16 +687,19 @@ class LocalThingsDtlsClient
                 }
                 $chunk = @fread($stream, 65535);
                 if ($chunk === false) {
-                    throw new RuntimeException('Lecture DTLS impossible');
+                    throw new RuntimeException(__('Lecture DTLS impossible', __FILE__));
                 }
                 if ($chunk !== '') {
-                    $this->log('debug', '[DTLS] ' . strlen($chunk) . ' octets applicatifs reçus');
+                    $this->log(
+                        'debug',
+                        sprintf(__('[DTLS] %d octets applicatifs reçus', __FILE__), strlen($chunk))
+                    );
                     $this->receiveBuffer .= $chunk;
                     $this->lastReceiveAt = microtime(true);
                 }
             }
             if (!$this->isRunning()) {
-                throw new RuntimeException('Session DTLS interrompue : ' . $this->errorSummary());
+                throw new RuntimeException(__('Session DTLS interrompue : ', __FILE__) . $this->errorSummary());
             }
         }
         $frame = $this->takeBufferedFrame(true);
@@ -698,8 +710,14 @@ class LocalThingsDtlsClient
             $expected = LocalThingsCoap::streamFrameLength($this->receiveBuffer);
             $this->log(
                 'warning',
-                '[DTLS] Trame CoAP incomplète écartée : reçue=' . strlen($this->receiveBuffer)
-                . (is_int($expected) && $expected > 0 ? ', attendue=' . $expected : '')
+                sprintf(
+                    __('[DTLS] Trame CoAP incomplète écartée : reçue=%d', __FILE__),
+                    strlen($this->receiveBuffer)
+                ) . (
+                    is_int($expected) && $expected > 0
+                    ? sprintf(__(', attendue=%d', __FILE__), $expected)
+                    : ''
+                )
             );
             $this->receiveBuffer = '';
         }
@@ -802,21 +820,21 @@ class LocalThingsDtlsClient
     private function validateConfiguration()
     {
         if (!is_executable($this->openssl)) {
-            throw new InvalidArgumentException('Exécutable OpenSSL introuvable');
+            throw new InvalidArgumentException(__('Exécutable OpenSSL introuvable', __FILE__));
         }
         if (filter_var($this->host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
-            throw new InvalidArgumentException('Adresse IPv4 DTLS invalide');
+            throw new InvalidArgumentException(__('Adresse IPv4 DTLS invalide', __FILE__));
         }
         if ($this->port < 1 || $this->port > 65535 || $this->localPort < 1024 || $this->localPort > 65535) {
-            throw new InvalidArgumentException('Port DTLS invalide');
+            throw new InvalidArgumentException(__('Port DTLS invalide', __FILE__));
         }
         foreach (array($this->certificatePath, $this->certificateChainPath, $this->keyPath, $this->rootCaPath) as $path) {
             if (!is_file($path) || !is_readable($path)) {
-                throw new InvalidArgumentException('Fichier DTLS illisible : ' . $path);
+                throw new InvalidArgumentException(__('Fichier DTLS illisible : ', __FILE__) . $path);
             }
         }
         if (!function_exists('proc_open')) {
-            throw new RuntimeException('La fonction PHP proc_open est désactivée');
+            throw new RuntimeException(__('La fonction PHP proc_open est désactivée', __FILE__));
         }
     }
 

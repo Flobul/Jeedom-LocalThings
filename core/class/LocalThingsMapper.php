@@ -173,7 +173,7 @@ class LocalThingsMapper
     public function buildWrite($recipe, $value, $resources)
     {
         if (!is_array($recipe) || empty($recipe['href'])) {
-            throw new InvalidArgumentException('Recette d’écriture LocalThings invalide');
+            throw new InvalidArgumentException(__('Recette d’écriture LocalThings invalide', __FILE__));
         }
         $href = (string) $recipe['href'];
         $field = (string) ($recipe['field'] ?? '');
@@ -198,19 +198,19 @@ class LocalThingsMapper
                 break;
             case 'integer':
                 if (!is_numeric($value)) {
-                    throw new InvalidArgumentException('Valeur numérique invalide');
+                    throw new InvalidArgumentException(__('Valeur numérique invalide', __FILE__));
                 }
                 $bodyValue = (int) $value;
                 break;
             case 'number':
                 if (!is_numeric($value)) {
-                    throw new InvalidArgumentException('Valeur numérique invalide');
+                    throw new InvalidArgumentException(__('Valeur numérique invalide', __FILE__));
                 }
                 $bodyValue = $value + 0;
                 break;
             case 'delay_hours':
                 if (!is_numeric($value)) {
-                    throw new InvalidArgumentException('Durée invalide');
+                    throw new InvalidArgumentException(__('Durée invalide', __FILE__));
                 }
                 $minutes = (int) round(max(0, (float) $value) * 60);
                 $bodyValue = sprintf('%d:%02d:00', intdiv($minutes, 60), $minutes % 60);
@@ -239,7 +239,7 @@ class LocalThingsMapper
                 break;
         }
         if ($field === '') {
-            throw new InvalidArgumentException('Champ d’écriture LocalThings absent');
+            throw new InvalidArgumentException(__('Champ d’écriture LocalThings absent', __FILE__));
         }
         return array(
             'path' => array_values(array_filter(explode('/', trim($href, '/')), 'strlen')),
@@ -315,7 +315,7 @@ class LocalThingsMapper
                 : 'same';
             $actions[] = $this->valueAction(
                 'set',
-                $this->tr('Choisir'),
+                __('Choisir', __FILE__),
                 'select',
                 $recipe,
                 $this->labelOptions($field, $options)
@@ -326,7 +326,7 @@ class LocalThingsMapper
         $range = $this->rangeFor($field, $representation);
         if ($range !== null && is_numeric($value) && $this->isWritableNumberField($href, $field)) {
             $recipe['encoding'] = is_int($value) ? 'integer' : 'number';
-            $action = $this->valueAction('set', $this->tr('Régler'), 'slider', $recipe);
+            $action = $this->valueAction('set', __('Régler', __FILE__), 'slider', $recipe);
             $action['min'] = $range[0];
             $action['max'] = $range[1];
             $action['step'] = $range[2];
@@ -364,18 +364,22 @@ class LocalThingsMapper
         $current = (string) $rep[$stateField];
         $currentDisplay = $this->operationalStateLabel($current);
         $actions = array();
-        foreach (array('Run' => 'Démarrer', 'Pause' => 'Pause', 'Ready' => 'Arrêter') as $fixed => $name) {
+        foreach (array(
+            'Run' => __('Démarrer', __FILE__),
+            'Pause' => __('Pause', __FILE__),
+            'Ready' => __('Arrêter', __FILE__),
+        ) as $fixed => $name) {
             $recipe = array(
                 'href' => $href,
                 'field' => $stateField,
                 'encoding' => 'fixed',
                 'fixed' => $fixed,
             );
-            $actions[] = $this->fixedAction(strtolower($fixed), $this->tr($name), $recipe);
+            $actions[] = $this->fixedAction(strtolower($fixed), $name, $recipe);
         }
         $entities[] = array(
             'key' => $key,
-            'name' => $this->tr('Commandes du cycle'),
+            'name' => __('Commandes du cycle', __FILE__),
             'platform' => 'button',
             'type' => 'info',
             'subtype' => 'string',
@@ -398,14 +402,14 @@ class LocalThingsMapper
                 'field' => $delayField,
                 'encoding' => 'delay_hours',
             );
-            $action = $this->valueAction('set', $this->tr('Régler'), 'slider', $recipe);
+            $action = $this->valueAction('set', __('Régler', __FILE__), 'slider', $recipe);
             $action['min'] = 0;
             $action['max'] = 24;
             $action['step'] = 1;
             $action['unit'] = 'h';
             $entities[] = array(
                 'key' => $delayKey,
-                'name' => $this->tr('Départ différé'),
+                'name' => __('Départ différé', __FILE__),
                 'platform' => 'number',
                 'type' => 'info',
                 'subtype' => 'numeric',
@@ -493,13 +497,17 @@ class LocalThingsMapper
                         'category' => '',
                         'value' => count($actions) > 0
                             ? ($value === 'On' ? 1 : 0)
-                            : ($isReadOnlyAlarm ? $this->tr($value === 'On' ? 'Active' : 'Inactive') : $value),
+                            : ($isReadOnlyAlarm
+                                ? ($value === 'On' ? __('Active', __FILE__) : __('Inactive', __FILE__))
+                                : $value),
                         'options' => array(),
                         'actions' => $actions,
                     );
                     $states[$key] = count($actions) > 0
                         ? ($value === 'On' ? 1 : 0)
-                        : ($isReadOnlyAlarm ? $this->tr($value === 'On' ? 'Active' : 'Inactive') : $value);
+                        : ($isReadOnlyAlarm
+                            ? ($value === 'On' ? __('Active', __FILE__) : __('Inactive', __FILE__))
+                            : $value);
                 }
             }
         }
@@ -531,11 +539,11 @@ class LocalThingsMapper
 
         $key = 'maintenance_drum_clean_status';
         $value = $washingTimes >= $proposal
-            ? $this->tr('Nettoyage recommandé')
-            : $this->tr('Aucun nettoyage nécessaire');
+            ? __('Nettoyage recommandé', __FILE__)
+            : __('Aucun nettoyage nécessaire', __FILE__);
         $entities[] = array(
             'key' => $key,
-            'name' => $this->tr('Nettoyage du tambour'),
+            'name' => __('Nettoyage du tambour', __FILE__),
             'platform' => 'sensor',
             'type' => 'info',
             'subtype' => 'string',
@@ -587,7 +595,7 @@ class LocalThingsMapper
             );
             $actions[] = $this->valueAction(
                 'set',
-                $this->tr('Choisir'),
+                __('Choisir', __FILE__),
                 'select',
                 $recipe,
                 $options
@@ -596,7 +604,7 @@ class LocalThingsMapper
         }
         $entities[] = array(
             'key' => $key,
-            'name' => $this->tr('Cycle'),
+            'name' => __('Cycle', __FILE__),
             'platform' => 'select',
             'type' => 'info',
             'subtype' => 'string',
@@ -681,56 +689,56 @@ class LocalThingsMapper
     {
         $tables = array(
             'Table_00' => array(
-                'BA' => 'Vidange / essorage', 'D0' => 'Coton', 'D1' => 'eCoton',
-                'D2' => 'Synthétiques', 'D3' => 'Délicat', 'D4' => 'Rinçage + essorage',
-                'D5' => 'Nettoyage tambour', 'D6' => 'Draps', 'D7' => 'Imperméable',
-                'D8' => 'Laine', 'D9' => 'Couleurs', 'DA' => 'Eco', 'DB' => 'Super rapide',
-                'DC' => 'Express 15 min', '5B' => 'Coton', '5C' => 'Super rapide',
-                '5D' => 'Eco', '5E' => 'Délicat', '5F' => 'Bébé coton',
-                '60' => 'Imperméable', '61' => 'Couleurs', '63' => 'Nettoyage tambour',
-                '64' => 'Rinçage + essorage', '65' => 'Laine', '66' => 'Draps',
-                '67' => 'Synthétiques', '68' => 'eCoton', '6C' => 'Jeans',
+                'BA' => __('Vidange / essorage', __FILE__), 'D0' => __('Coton', __FILE__), 'D1' => __('eCoton', __FILE__),
+                'D2' => __('Synthétiques', __FILE__), 'D3' => __('Délicat', __FILE__), 'D4' => __('Rinçage + essorage', __FILE__),
+                'D5' => __('Nettoyage tambour', __FILE__), 'D6' => __('Draps', __FILE__), 'D7' => __('Imperméable', __FILE__),
+                'D8' => __('Laine', __FILE__), 'D9' => __('Couleurs', __FILE__), 'DA' => __('Eco', __FILE__), 'DB' => __('Super rapide', __FILE__),
+                'DC' => __('Express 15 min', __FILE__), '5B' => __('Coton', __FILE__), '5C' => __('Super rapide', __FILE__),
+                '5D' => __('Eco', __FILE__), '5E' => __('Délicat', __FILE__), '5F' => __('Bébé coton', __FILE__),
+                '60' => __('Imperméable', __FILE__), '61' => __('Couleurs', __FILE__), '63' => __('Nettoyage tambour', __FILE__),
+                '64' => __('Rinçage + essorage', __FILE__), '65' => __('Laine', __FILE__), '66' => __('Draps', __FILE__),
+                '67' => __('Synthétiques', __FILE__), '68' => __('eCoton', __FILE__), '6C' => __('Jeans', __FILE__),
             ),
             'Table_02' => array(
-                '01' => 'Normal', '04' => 'Lavage rapide', '17' => 'Téléchargé',
-                '1B' => 'Coton', '1C' => 'Eco 40-60', '1D' => 'Super rapide',
-                '1E' => 'Express 15 min', '1F' => 'Intensif à froid',
-                '20' => 'Anti-allergènes', '21' => 'Couleurs', '22' => 'Laine',
-                '23' => 'Extérieur', '24' => 'Serviettes', '25' => 'Synthétiques',
-                '26' => 'Délicat', '27' => 'Rinçage + essorage',
-                '28' => 'Vidange / essorage', '29' => 'Nettoyage tambour+',
-                '2A' => 'Jeans', '2B' => 'Lavage IA', '2D' => 'Lavage silencieux',
-                '2E' => 'Bébé coton', '2F' => 'Sport', '30' => 'Journée nuageuse',
-                '32' => 'Chemises', '33' => 'Draps', '34' => 'Mix',
-                '36' => 'Lavage + séchage', '37' => 'Air Wash',
-                '38' => 'Séchage coton', '39' => 'Séchage synthétiques',
-                '3A' => 'Nettoyage tambour', '52' => 'Eco à froid',
-                '53' => 'Intensif', '54' => 'Serviettes', '55' => 'Sport',
-                '57' => 'Délicat', '5E' => 'Rinçage + essorage',
-                '60' => 'Auto-nettoyage+', '65' => 'Couleurs', '66' => 'Jeans',
-                '7C' => 'Blanc', '7D' => 'Draps / Imperméable',
-                '7E' => 'Auto-nettoyage', '7F' => 'Laine / Délicat',
-                '86' => 'Lavage en profondeur', '87' => 'Téléchargé',
-                '8F' => 'Intensif à froid', '96' => 'Moins de microfibres',
+                '01' => __('Normal', __FILE__), '04' => __('Lavage rapide', __FILE__), '17' => __('Téléchargé', __FILE__),
+                '1B' => __('Coton', __FILE__), '1C' => __('Eco 40-60', __FILE__), '1D' => __('Super rapide', __FILE__),
+                '1E' => __('Express 15 min', __FILE__), '1F' => __('Intensif à froid', __FILE__),
+                '20' => __('Anti-allergènes', __FILE__), '21' => __('Couleurs', __FILE__), '22' => __('Laine', __FILE__),
+                '23' => __('Extérieur', __FILE__), '24' => __('Serviettes', __FILE__), '25' => __('Synthétiques', __FILE__),
+                '26' => __('Délicat', __FILE__), '27' => __('Rinçage + essorage', __FILE__),
+                '28' => __('Vidange / essorage', __FILE__), '29' => __('Nettoyage tambour+', __FILE__),
+                '2A' => __('Jeans', __FILE__), '2B' => __('Lavage IA', __FILE__), '2D' => __('Lavage silencieux', __FILE__),
+                '2E' => __('Bébé coton', __FILE__), '2F' => __('Sport', __FILE__), '30' => __('Journée nuageuse', __FILE__),
+                '32' => __('Chemises', __FILE__), '33' => __('Draps', __FILE__), '34' => __('Mix', __FILE__),
+                '36' => __('Lavage + séchage', __FILE__), '37' => __('Air Wash', __FILE__),
+                '38' => __('Séchage coton', __FILE__), '39' => __('Séchage synthétiques', __FILE__),
+                '3A' => __('Nettoyage tambour', __FILE__), '52' => __('Eco à froid', __FILE__),
+                '53' => __('Intensif', __FILE__), '54' => __('Serviettes', __FILE__), '55' => __('Sport', __FILE__),
+                '57' => __('Délicat', __FILE__), '5E' => __('Rinçage + essorage', __FILE__),
+                '60' => __('Auto-nettoyage+', __FILE__), '65' => __('Couleurs', __FILE__), '66' => __('Jeans', __FILE__),
+                '7C' => __('Blanc', __FILE__), '7D' => __('Draps / Imperméable', __FILE__),
+                '7E' => __('Auto-nettoyage', __FILE__), '7F' => __('Laine / Délicat', __FILE__),
+                '86' => __('Lavage en profondeur', __FILE__), '87' => __('Téléchargé', __FILE__),
+                '8F' => __('Intensif à froid', __FILE__), '96' => __('Moins de microfibres', __FILE__),
             ),
             'Table_03' => array(
-                '16' => 'Coton', '17' => 'Super rapide', '18' => 'Synthétiques',
-                '19' => 'Délicat', '1A' => 'Laine', '1B' => 'Draps',
-                '1C' => 'Chemises', '1D' => 'Serviettes', '1E' => 'Vêtements de sport',
-                '1F' => 'Mix', '20' => 'Prêt à repasser', '21' => 'Anti-allergènes',
-                '23' => 'Séchage rapide 35 min', '24' => 'Air froid',
-                '25' => 'Air chaud', '26' => 'Air Wash', '27' => 'Minuterie',
+                '16' => __('Coton', __FILE__), '17' => __('Super rapide', __FILE__), '18' => __('Synthétiques', __FILE__),
+                '19' => __('Délicat', __FILE__), '1A' => __('Laine', __FILE__), '1B' => __('Draps', __FILE__),
+                '1C' => __('Chemises', __FILE__), '1D' => __('Serviettes', __FILE__), '1E' => __('Vêtements de sport', __FILE__),
+                '1F' => __('Mix', __FILE__), '20' => __('Prêt à repasser', __FILE__), '21' => __('Anti-allergènes', __FILE__),
+                '23' => __('Séchage rapide 35 min', __FILE__), '24' => __('Air froid', __FILE__),
+                '25' => __('Air chaud', __FILE__), '26' => __('Air Wash', __FILE__), '27' => __('Minuterie', __FILE__),
             ),
         );
         $code = strtoupper((string) $code);
-        return isset($tables[$table][$code]) ? $this->tr($tables[$table][$code]) : $code;
+        return $tables[$table][$code] ?? $code;
     }
 
     private function switchActions($recipe)
     {
         return array(
-            $this->fixedAction('on', $this->tr('Allumer'), array_merge($recipe, array('fixed_input' => true)), true),
-            $this->fixedAction('off', $this->tr('Éteindre'), array_merge($recipe, array('fixed_input' => false)), false),
+            $this->fixedAction('on', __('Allumer', __FILE__), array_merge($recipe, array('fixed_input' => true)), true),
+            $this->fixedAction('off', __('Éteindre', __FILE__), array_merge($recipe, array('fixed_input' => false)), false),
         );
     }
 
@@ -816,7 +824,9 @@ class LocalThingsMapper
         $normalized = strtolower((string) $value);
         if (stripos($field, 'rinseCycles') !== false && ctype_digit((string) $value)) {
             $count = (int) $value;
-            return $count . ' ' . $this->tr($count > 1 ? 'rinçages' : 'rinçage');
+            return $count . ' ' . ($count > 1
+                ? __('rinçages', __FILE__)
+                : __('rinçage', __FILE__));
         }
         if (stripos($field, 'spinLevel') !== false && is_numeric($value)) {
             return $value . ' tr/min';
@@ -825,36 +835,36 @@ class LocalThingsMapper
             return $value . ' °C';
         }
         $labels = array(
-            'none' => 'Aucun',
-            'auto' => 'Automatique',
-            'automatic' => 'Automatique',
-            'on' => 'Activé',
-            'off' => 'Désactivé',
-            'enabled' => 'Activé',
-            'disabled' => 'Désactivé',
-            'normal' => 'Normal',
-            'eco' => 'Éco',
-            'heat' => 'Chauffage',
-            'fan' => 'Ventilation',
-            'dry' => 'Déshumidification',
-            'nospin' => 'Sans essorage',
-            'rinsehold' => 'Arrêt cuve pleine',
-            'extralow' => 'Très faible',
-            'low' => 'Faible',
-            'medium' => 'Moyen',
-            'high' => 'Élevé',
-            'extrahigh' => 'Très élevé',
-            'delicate' => 'Délicat',
-            'tapcold' => 'Eau froide',
-            'cold' => 'Froid',
-            'cool' => 'Frais',
-            'mediumlow' => 'Froid à tiède',
-            'semihot' => 'Tiède',
-            'warm' => 'Chaud',
-            'hot' => 'Très chaud',
-            'extrahot' => 'Très chaud',
+            'none' => __('Aucun', __FILE__),
+            'auto' => __('Automatique', __FILE__),
+            'automatic' => __('Automatique', __FILE__),
+            'on' => __('Activé', __FILE__),
+            'off' => __('Désactivé', __FILE__),
+            'enabled' => __('Activé', __FILE__),
+            'disabled' => __('Désactivé', __FILE__),
+            'normal' => __('Normal', __FILE__),
+            'eco' => __('Éco', __FILE__),
+            'heat' => __('Chauffage', __FILE__),
+            'fan' => __('Ventilation', __FILE__),
+            'dry' => __('Déshumidification', __FILE__),
+            'nospin' => __('Sans essorage', __FILE__),
+            'rinsehold' => __('Arrêt cuve pleine', __FILE__),
+            'extralow' => __('Très faible', __FILE__),
+            'low' => __('Faible', __FILE__),
+            'medium' => __('Moyen', __FILE__),
+            'high' => __('Élevé', __FILE__),
+            'extrahigh' => __('Très élevé', __FILE__),
+            'delicate' => __('Délicat', __FILE__),
+            'tapcold' => __('Eau froide', __FILE__),
+            'cold' => __('Froid', __FILE__),
+            'cool' => __('Frais', __FILE__),
+            'mediumlow' => __('Froid à tiède', __FILE__),
+            'semihot' => __('Tiède', __FILE__),
+            'warm' => __('Chaud', __FILE__),
+            'hot' => __('Très chaud', __FILE__),
+            'extrahot' => __('Très chaud', __FILE__),
         );
-        return isset($labels[$normalized]) ? $this->tr($labels[$normalized]) : (string) $value;
+        return $labels[$normalized] ?? (string) $value;
     }
 
     private function rangeFor($field, $representation)
@@ -934,7 +944,7 @@ class LocalThingsMapper
             preg_match('#/alarms?/(?:vs/)?\d+$#i', $href)
             && preg_match('/(?:^|\.)items$/i', $field)
         ) {
-            return $this->alarmSummary($value);
+            return $this->formatAlarmSummary($value);
         }
         if (
             is_scalar($value)
@@ -985,11 +995,17 @@ class LocalThingsMapper
      * as Deleted and placeholder codes ending in _OFF are inactive; this is
      * the same cross-family rule used by mbillow/localthings common.ALARMS.
      */
-    private function alarmSummary($items)
+    public function formatAlarmSummary($items)
     {
+        if (is_string($items)) {
+            $raw = trim($items);
+            if ($raw !== '' && !in_array($raw[0], array('[', '{', '"'), true)) {
+                return $raw;
+            }
+        }
         $items = $this->decodedAlarmItems($items);
         if ($items === null) {
-            return $this->tr('Alarme non interprétable');
+            return __('Alarme non interprétable', __FILE__);
         }
         $active = array();
         foreach ($items as $item) {
@@ -1021,13 +1037,17 @@ class LocalThingsMapper
             ));
             $triggeredAt = $this->alarmTimeLabel($triggeredAt);
             if ($triggeredAt !== '') {
-                $summary .= ' — ' . $this->tr('Début') . ' : ' . $triggeredAt;
+                $summary = sprintf(
+                    __('%1$s — déclenchée le %2$s', __FILE__),
+                    $summary,
+                    $triggeredAt
+                );
             }
             $active[strtolower($code)] = $summary;
         }
         return count($active) > 0
             ? implode(' ; ', array_values($active))
-            : $this->tr('Aucune alarme');
+            : __('Aucune alarme active', __FILE__);
     }
 
     private function decodedAlarmItems($items)
@@ -1068,8 +1088,11 @@ class LocalThingsMapper
                 $matches
             )
         ) {
-            return $matches[3] . '/' . $matches[2] . '/' . $matches[1]
-                . ' ' . $matches[4] . ':' . $matches[5];
+            return sprintf(
+                __('%1$s à %2$s', __FILE__),
+                $matches[3] . '/' . $matches[2] . '/' . $matches[1],
+                $matches[4] . ':' . $matches[5]
+            );
         }
         return '';
     }
@@ -1078,72 +1101,72 @@ class LocalThingsMapper
     {
         $normalized = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $code));
         $rules = array(
-            '/(?:hotwarning|overheat|hightemp|temperaturehigh)/' => 'Température élevée',
-            '/(?:door.*open|open.*door)/' => 'Porte ouverte',
-            '/filter/' => 'Filtre à entretenir',
-            '/(?:watersupply|waterinlet|inletwater|nowater)/' => 'Problème d’arrivée d’eau',
-            '/(?:drain|waterout)/' => 'Problème de vidange',
-            '/(?:gasleak|leakgas)/' => 'Fuite de gaz détectée',
-            '/(?:waterleak|leakage|leak)/' => 'Fuite détectée',
-            '/(?:overflow|overfill)/' => 'Débordement détecté',
-            '/motor/' => 'Problème moteur',
-            '/(?:voltage|powersupply|powererror)/' => 'Problème d’alimentation',
-            '/(?:communication|network|offline)/' => 'Problème de communication',
-            '/detergent/' => 'Vérifiez la lessive',
-            '/softener/' => 'Vérifiez l’adoucissant',
-            '/(?:tankempty|emptytank|reservoirempty)/' => 'Réservoir vide',
-            '/sensor/' => 'Défaut de capteur',
-            '/fan/' => 'Problème de ventilation',
-            '/compressor/' => 'Problème du compresseur',
-            '/defrost/' => 'Problème de dégivrage',
-            '/(?:smoke|fire)/' => 'Fumée détectée',
-            '/errorcode/' => 'Erreur de l’appareil',
+            '/(?:hotwarning|overheat|hightemp|temperaturehigh)/' => __('Température élevée', __FILE__),
+            '/(?:door.*open|open.*door)/' => __('Porte ouverte', __FILE__),
+            '/filter/' => __('Filtre à entretenir', __FILE__),
+            '/(?:watersupply|waterinlet|inletwater|nowater)/' => __('Problème d’arrivée d’eau', __FILE__),
+            '/(?:drain|waterout)/' => __('Problème de vidange', __FILE__),
+            '/(?:gasleak|leakgas)/' => __('Fuite de gaz détectée', __FILE__),
+            '/(?:waterleak|leakage|leak)/' => __('Fuite détectée', __FILE__),
+            '/(?:overflow|overfill)/' => __('Débordement détecté', __FILE__),
+            '/motor/' => __('Problème moteur', __FILE__),
+            '/(?:voltage|powersupply|powererror)/' => __('Problème d’alimentation', __FILE__),
+            '/(?:communication|network|offline)/' => __('Problème de communication', __FILE__),
+            '/detergent/' => __('Vérifiez la lessive', __FILE__),
+            '/softener/' => __('Vérifiez l’adoucissant', __FILE__),
+            '/(?:tankempty|emptytank|reservoirempty)/' => __('Réservoir vide', __FILE__),
+            '/sensor/' => __('Défaut de capteur', __FILE__),
+            '/fan/' => __('Problème de ventilation', __FILE__),
+            '/compressor/' => __('Problème du compresseur', __FILE__),
+            '/defrost/' => __('Problème de dégivrage', __FILE__),
+            '/(?:smoke|fire)/' => __('Fumée détectée', __FILE__),
+            '/errorcode/' => __('Erreur de l’appareil', __FILE__),
         );
         foreach ($rules as $pattern => $label) {
             if (preg_match($pattern, $normalized)) {
-                return $this->tr($label);
+                return $label;
             }
         }
-        return $this->tr('Alerte') . ' (' . (string) $code . ')';
+        return __('Alerte', __FILE__) . ' (' . (string) $code . ')';
     }
 
     private function translatedValue($value)
     {
         $labels = array(
-            'allowed' => 'Autorisé',
-            'notallowed' => 'Non autorisé',
-            'supported' => 'Pris en charge',
-            'notsupported' => 'Non pris en charge',
-            'enable' => 'Activé',
-            'enabled' => 'Activé',
-            'disable' => 'Désactivé',
-            'disabled' => 'Désactivé',
-            'open' => 'Ouvert',
-            'opened' => 'Ouvert',
-            'close' => 'Fermé',
-            'closed' => 'Fermé',
-            'lock' => 'Verrouillé',
-            'locked' => 'Verrouillé',
-            'unlock' => 'Déverrouillé',
-            'unlocked' => 'Déverrouillé',
-            'ok' => 'OK',
+            'allowed' => __('Autorisé', __FILE__),
+            'notallowed' => __('Non autorisé', __FILE__),
+            'supported' => __('Pris en charge', __FILE__),
+            'notsupported' => __('Non pris en charge', __FILE__),
+            'enable' => __('Activé', __FILE__),
+            'enabled' => __('Activé', __FILE__),
+            'disable' => __('Désactivé', __FILE__),
+            'disabled' => __('Désactivé', __FILE__),
+            'open' => __('Ouvert', __FILE__),
+            'opened' => __('Ouvert', __FILE__),
+            'close' => __('Fermé', __FILE__),
+            'closed' => __('Fermé', __FILE__),
+            'lock' => __('Verrouillé', __FILE__),
+            'locked' => __('Verrouillé', __FILE__),
+            'unlock' => __('Déverrouillé', __FILE__),
+            'unlocked' => __('Déverrouillé', __FILE__),
+            'ok' => __('OK', __FILE__),
         );
         $key = strtolower(preg_replace('/[^a-z0-9]/i', '', trim((string) $value)));
-        return isset($labels[$key]) ? $this->tr($labels[$key]) : $value;
+        return $labels[$key] ?? $value;
     }
 
     private function operationalStateLabel($value)
     {
         $labels = array(
-            'run' => 'En cours',
-            'pause' => 'En pause',
-            'ready' => 'Prêt',
-            'stop' => 'Arrêté',
-            'finished' => 'Terminé',
-            'complete' => 'Terminé',
+            'run' => __('En cours', __FILE__),
+            'pause' => __('En pause', __FILE__),
+            'ready' => __('Prêt', __FILE__),
+            'stop' => __('Arrêté', __FILE__),
+            'finished' => __('Terminé', __FILE__),
+            'complete' => __('Terminé', __FILE__),
         );
         $normalized = strtolower(trim((string) $value));
-        return $this->tr($labels[$normalized] ?? (string) $value);
+        return $labels[$normalized] ?? (string) $value;
     }
 
     private function entityKey($href, $field)
@@ -1156,49 +1179,49 @@ class LocalThingsMapper
     private function humanName($href, $field)
     {
         $known = array(
-            '/power/0|value' => 'Alimentation',
-            '/power/vs/0|x.com.samsung.da.power' => 'Alimentation',
-            '/kidslock/0|value' => 'Sécurité enfants',
-            '/kidslock/vs/0|x.com.samsung.da.kidsLock' => 'Sécurité enfants',
-            '/remotectrl/0|value' => 'Contrôle à distance',
-            '/remotectrl/vs/0|x.com.samsung.da.remoteControlEnabled' => 'Contrôle à distance',
-            '/washer/vs/0|x.com.samsung.da.waterTemperature' => 'Température de lavage',
-            '/washer/vs/0|x.com.samsung.da.spinLevel' => 'Vitesse d’essorage',
-            '/washer/vs/0|x.com.samsung.da.rinseCycles' => 'Nombre de rinçages',
-            '/washer/vs/0|x.com.samsung.da.supportedWaterTemperature' => 'Températures de lavage disponibles',
-            '/washer/vs/0|x.com.samsung.da.supportedSpinLevel' => 'Vitesses d’essorage disponibles',
-            '/washer/vs/0|x.com.samsung.da.supportedRinseCycles' => 'Nombres de rinçages disponibles',
-            '/operational/state/vs/0|x.com.samsung.da.state' => 'État',
-            '/operational/state/vs/0|x.com.samsung.da.remainingTime' => 'Temps restant',
-            '/operational/state/vs/0|x.com.samsung.da.progressPercentage' => 'Progression',
-            '/operational/state/0|state' => 'État',
-            '/operational/state/0|remainingTime' => 'Temps restant',
-            '/operational/state/0|progressPercentage' => 'Progression',
-            '/energyconsumption/0|instantaneousPower' => 'Puissance instantanée',
-            '/energyconsumption/0|cumulativePower' => 'Consommation cumulée',
-            '/energyconsumption/0|cumulativeUnit' => 'Unité de consommation',
-            '/energyconsumption/0|cumulativeDate' => 'Date du relevé',
-            '/energyconsumption/0|cumulativeDateUTC' => 'Date UTC du relevé',
-            '/alarms/vs/0|x.com.samsung.da.items' => 'Alarmes',
+            '/power/0|value' => __('Alimentation', __FILE__),
+            '/power/vs/0|x.com.samsung.da.power' => __('Alimentation', __FILE__),
+            '/kidslock/0|value' => __('Sécurité enfants', __FILE__),
+            '/kidslock/vs/0|x.com.samsung.da.kidsLock' => __('Sécurité enfants', __FILE__),
+            '/remotectrl/0|value' => __('Contrôle à distance', __FILE__),
+            '/remotectrl/vs/0|x.com.samsung.da.remoteControlEnabled' => __('Contrôle à distance', __FILE__),
+            '/washer/vs/0|x.com.samsung.da.waterTemperature' => __('Température de lavage', __FILE__),
+            '/washer/vs/0|x.com.samsung.da.spinLevel' => __('Vitesse d’essorage', __FILE__),
+            '/washer/vs/0|x.com.samsung.da.rinseCycles' => __('Nombre de rinçages', __FILE__),
+            '/washer/vs/0|x.com.samsung.da.supportedWaterTemperature' => __('Températures de lavage disponibles', __FILE__),
+            '/washer/vs/0|x.com.samsung.da.supportedSpinLevel' => __('Vitesses d’essorage disponibles', __FILE__),
+            '/washer/vs/0|x.com.samsung.da.supportedRinseCycles' => __('Nombres de rinçages disponibles', __FILE__),
+            '/operational/state/vs/0|x.com.samsung.da.state' => __('État', __FILE__),
+            '/operational/state/vs/0|x.com.samsung.da.remainingTime' => __('Temps restant', __FILE__),
+            '/operational/state/vs/0|x.com.samsung.da.progressPercentage' => __('Progression', __FILE__),
+            '/operational/state/0|state' => __('État', __FILE__),
+            '/operational/state/0|remainingTime' => __('Temps restant', __FILE__),
+            '/operational/state/0|progressPercentage' => __('Progression', __FILE__),
+            '/energyconsumption/0|instantaneousPower' => __('Puissance instantanée', __FILE__),
+            '/energyconsumption/0|cumulativePower' => __('Consommation cumulée', __FILE__),
+            '/energyconsumption/0|cumulativeUnit' => __('Unité de consommation', __FILE__),
+            '/energyconsumption/0|cumulativeDate' => __('Date du relevé', __FILE__),
+            '/energyconsumption/0|cumulativeDateUTC' => __('Date UTC du relevé', __FILE__),
+            '/alarms/vs/0|x.com.samsung.da.items' => __('Alarmes', __FILE__),
         );
         $knownKey = $href . '|' . $field;
         if (isset($known[$knownKey])) {
-            return $this->tr($known[$knownKey]);
+            return $known[$knownKey];
         }
         if (
             preg_match('#/alarms?/(?:vs/)?\d+$#i', $href)
             && preg_match('/(?:^|\.)items$/i', $field)
         ) {
-            return $this->tr('Alarmes');
+            return __('Alarmes', __FILE__);
         }
         if (preg_match('/drumCleanProposal/i', $field)) {
-            return $this->tr('Alerte après');
+            return __('Alerte après', __FILE__);
         }
         if (preg_match('/washingTimes/i', $field)) {
-            return $this->tr('Lavages depuis le dernier nettoyage');
+            return __('Lavages depuis le dernier nettoyage', __FILE__);
         }
         if (preg_match('/drumCleanLog/i', $field)) {
-            return $this->tr('Historique des nettoyages tambour');
+            return __('Historique des nettoyages tambour', __FILE__);
         }
         $fieldLabel = $this->translatedIdentifier($field);
         $resource = trim(preg_replace('#/(?:vs/)?\d+$#', '', $href), '/');
@@ -1206,7 +1229,7 @@ class LocalThingsMapper
         if ($fieldLabel === $resourceLabel) {
             return $fieldLabel;
         }
-        if (in_array($fieldLabel, array($this->tr('Valeur'), $this->tr('État'), $this->tr('Mode')), true)) {
+        if (in_array($fieldLabel, array(__('Valeur', __FILE__), __('État', __FILE__), __('Mode', __FILE__)), true)) {
             return trim($resourceLabel . ' - ' . $fieldLabel, ' -');
         }
         return $fieldLabel !== '' ? $fieldLabel : $resourceLabel;
@@ -1218,7 +1241,7 @@ class LocalThingsMapper
         foreach ($entities as &$entity) {
             $base = trim((string) ($entity['name'] ?? ''));
             if ($base === '') {
-                $base = trim((string) ($entity['key'] ?? 'Information')) ?: 'Information';
+                $base = trim((string) ($entity['key'] ?? __('Information', __FILE__))) ?: __('Information', __FILE__);
             }
             $name = $base;
             $suffix = 2;
@@ -1244,113 +1267,113 @@ class LocalThingsMapper
         $identifier = preg_replace('/^x\.com\.samsung\.da\./i', '', (string) $identifier);
         $compact = strtolower(preg_replace('/[^a-z0-9]/i', '', $identifier));
         $phrases = array(
-            'information' => 'Informations de l’appareil',
-            'washer' => 'Lave-linge',
-            'dryer' => 'Sèche-linge',
-            'dishwasher' => 'Lave-vaisselle',
-            'refrigeration' => 'Réfrigérateur',
-            'operationalstate' => 'Fonctionnement',
-            'energyconsumption' => 'Consommation électrique',
-            'wmstatistics' => 'Entretien',
-            'wmsetinfo' => 'Configuration du lave-linge',
-            'course' => 'Programme',
-            'stwashercourse' => 'Catalogue des programmes du lave-linge',
-            'stdryercourse' => 'Catalogue des programmes du sèche-linge',
-            'value' => 'Valeur',
-            'state' => 'État',
-            'mode' => 'Mode',
-            'wmstatus' => 'État du lave-linge',
-            'wmconfig' => 'Configuration du lave-linge',
-            'devicetype' => 'Type d’appareil',
-            'updateallow' => 'Mise à jour autorisée',
-            'laundryouttime' => 'Heure de fin du linge',
-            'seamlesscontrol' => 'Contrôle continu',
-            'kidslockbypass' => 'Contournement de la sécurité enfants',
-            'detergentonce' => 'Dose unique de lessive',
-            'detergentleft' => 'Lessive restante',
-            'detergentbase' => 'Dose de base de lessive',
-            'detergentalarm' => 'Alerte de lessive',
-            'detergenttype' => 'Type de lessive',
-            'detergenttotal' => 'Quantité totale de lessive',
-            'softenerleft' => 'Adoucissant restant',
-            'softeneralarm' => 'Alerte d’adoucissant',
-            'specialfunction' => 'Fonction spéciale',
-            'laundryplannerusersettime' => 'Heure planifiée',
-            'energylevelset' => 'Niveau d’énergie',
-            'mostused' => 'Programme le plus utilisé',
-            'usagesdb' => 'Base des utilisations',
-            'timesync' => 'Synchronisation de l’heure',
-            'drumcleanproposal' => 'Alerte après',
-            'washingtimes' => 'Lavages depuis le dernier nettoyage',
-            'drumcleanlog' => 'Historique des nettoyages tambour',
-            'watertemperature' => 'Température de lavage',
-            'supportedwatertemperature' => 'Températures de lavage disponibles',
-            'spinlevel' => 'Vitesse d’essorage',
-            'supportedspinlevel' => 'Vitesses d’essorage disponibles',
-            'rinsecycles' => 'Nombre de rinçages',
-            'supportedrinsecycles' => 'Nombres de rinçages disponibles',
-            'drylevel' => 'Niveau de séchage',
-            'remainingtime' => 'Temps restant',
-            'progresstime' => 'Durée de progression',
-            'progresspercentage' => 'Progression',
-            'instantaneouspower' => 'Puissance instantanée',
-            'instantaneouspowerunit' => 'Unité de puissance',
-            'cumulativepower' => 'Consommation cumulée',
-            'cumulativeunit' => 'Unité de consommation',
-            'cumulativedate' => 'Date du relevé',
-            'cumulativedateutc' => 'Date UTC du relevé',
-            'coursetable' => 'Table des programmes',
-            'supportedoptions' => 'Options disponibles',
-            'ismodelsettingpoweronoff' => 'Commande marche/arrêt autorisée',
-            'remotecontrolenabled' => 'Contrôle à distance',
-            'kidslock' => 'Sécurité enfants',
-            'power' => 'Alimentation',
-            'filterlife' => 'Durée de vie du filtre',
-            'filterstatus' => 'État du filtre',
-            'filterremind' => 'Rappel du filtre',
-            'voltage' => 'Tension',
-            'electriccurrent' => 'Intensité',
-            'frequency' => 'Fréquence',
-            'pressure' => 'Pression',
-            'battery' => 'Batterie',
-            'brightness' => 'Luminosité',
-            'humidity' => 'Humidité',
-            'temperature' => 'Température',
-            'flowrate' => 'Débit',
-            'waterconsumption' => 'Consommation d’eau',
-            'weight' => 'Poids',
-            'co2' => 'CO₂',
-            'voc' => 'COV',
+            'information' => __('Informations de l’appareil', __FILE__),
+            'washer' => __('Lave-linge', __FILE__),
+            'dryer' => __('Sèche-linge', __FILE__),
+            'dishwasher' => __('Lave-vaisselle', __FILE__),
+            'refrigeration' => __('Réfrigérateur', __FILE__),
+            'operationalstate' => __('Fonctionnement', __FILE__),
+            'energyconsumption' => __('Consommation électrique', __FILE__),
+            'wmstatistics' => __('Entretien', __FILE__),
+            'wmsetinfo' => __('Configuration du lave-linge', __FILE__),
+            'course' => __('Programme', __FILE__),
+            'stwashercourse' => __('Catalogue des programmes du lave-linge', __FILE__),
+            'stdryercourse' => __('Catalogue des programmes du sèche-linge', __FILE__),
+            'value' => __('Valeur', __FILE__),
+            'state' => __('État', __FILE__),
+            'mode' => __('Mode', __FILE__),
+            'wmstatus' => __('État du lave-linge', __FILE__),
+            'wmconfig' => __('Configuration du lave-linge', __FILE__),
+            'devicetype' => __('Type d’appareil', __FILE__),
+            'updateallow' => __('Mise à jour autorisée', __FILE__),
+            'laundryouttime' => __('Heure de fin du linge', __FILE__),
+            'seamlesscontrol' => __('Contrôle continu', __FILE__),
+            'kidslockbypass' => __('Contournement de la sécurité enfants', __FILE__),
+            'detergentonce' => __('Dose unique de lessive', __FILE__),
+            'detergentleft' => __('Lessive restante', __FILE__),
+            'detergentbase' => __('Dose de base de lessive', __FILE__),
+            'detergentalarm' => __('Alerte de lessive', __FILE__),
+            'detergenttype' => __('Type de lessive', __FILE__),
+            'detergenttotal' => __('Quantité totale de lessive', __FILE__),
+            'softenerleft' => __('Adoucissant restant', __FILE__),
+            'softeneralarm' => __('Alerte d’adoucissant', __FILE__),
+            'specialfunction' => __('Fonction spéciale', __FILE__),
+            'laundryplannerusersettime' => __('Heure planifiée', __FILE__),
+            'energylevelset' => __('Niveau d’énergie', __FILE__),
+            'mostused' => __('Programme le plus utilisé', __FILE__),
+            'usagesdb' => __('Base des utilisations', __FILE__),
+            'timesync' => __('Synchronisation de l’heure', __FILE__),
+            'drumcleanproposal' => __('Alerte après', __FILE__),
+            'washingtimes' => __('Lavages depuis le dernier nettoyage', __FILE__),
+            'drumcleanlog' => __('Historique des nettoyages tambour', __FILE__),
+            'watertemperature' => __('Température de lavage', __FILE__),
+            'supportedwatertemperature' => __('Températures de lavage disponibles', __FILE__),
+            'spinlevel' => __('Vitesse d’essorage', __FILE__),
+            'supportedspinlevel' => __('Vitesses d’essorage disponibles', __FILE__),
+            'rinsecycles' => __('Nombre de rinçages', __FILE__),
+            'supportedrinsecycles' => __('Nombres de rinçages disponibles', __FILE__),
+            'drylevel' => __('Niveau de séchage', __FILE__),
+            'remainingtime' => __('Temps restant', __FILE__),
+            'progresstime' => __('Durée de progression', __FILE__),
+            'progresspercentage' => __('Progression', __FILE__),
+            'instantaneouspower' => __('Puissance instantanée', __FILE__),
+            'instantaneouspowerunit' => __('Unité de puissance', __FILE__),
+            'cumulativepower' => __('Consommation cumulée', __FILE__),
+            'cumulativeunit' => __('Unité de consommation', __FILE__),
+            'cumulativedate' => __('Date du relevé', __FILE__),
+            'cumulativedateutc' => __('Date UTC du relevé', __FILE__),
+            'coursetable' => __('Table des programmes', __FILE__),
+            'supportedoptions' => __('Options disponibles', __FILE__),
+            'ismodelsettingpoweronoff' => __('Commande marche/arrêt autorisée', __FILE__),
+            'remotecontrolenabled' => __('Contrôle à distance', __FILE__),
+            'kidslock' => __('Sécurité enfants', __FILE__),
+            'power' => __('Alimentation', __FILE__),
+            'filterlife' => __('Durée de vie du filtre', __FILE__),
+            'filterstatus' => __('État du filtre', __FILE__),
+            'filterremind' => __('Rappel du filtre', __FILE__),
+            'voltage' => __('Tension', __FILE__),
+            'electriccurrent' => __('Intensité', __FILE__),
+            'frequency' => __('Fréquence', __FILE__),
+            'pressure' => __('Pression', __FILE__),
+            'battery' => __('Batterie', __FILE__),
+            'brightness' => __('Luminosité', __FILE__),
+            'humidity' => __('Humidité', __FILE__),
+            'temperature' => __('Température', __FILE__),
+            'flowrate' => __('Débit', __FILE__),
+            'waterconsumption' => __('Consommation d’eau', __FILE__),
+            'weight' => __('Poids', __FILE__),
+            'co2' => __('CO₂', __FILE__),
+            'voc' => __('COV', __FILE__),
         );
         if (isset($phrases[$compact])) {
-            return $this->tr($phrases[$compact]);
+            return $phrases[$compact];
         }
 
         $words = preg_replace('/([a-z0-9])([A-Z])/', '$1 $2', $identifier);
         $words = preg_split('/[^\pL\pN]+/u', $words, -1, PREG_SPLIT_NO_EMPTY);
         $tokens = array(
-            'air' => 'air', 'alarm' => 'alerte', 'allow' => 'autorisation',
-            'available' => 'disponible', 'base' => 'base', 'child' => 'enfants',
-            'clean' => 'nettoyage', 'control' => 'contrôle', 'cooktop' => 'table de cuisson',
-            'count' => 'nombre', 'cumulative' => 'cumulée', 'current' => 'actuelle',
-            'cycle' => 'programme', 'date' => 'date', 'delay' => 'délai',
-            'desired' => 'souhaitée', 'detergent' => 'lessive', 'device' => 'appareil',
-            'dishwasher' => 'lave-vaisselle', 'door' => 'porte', 'dryer' => 'sèche-linge',
-            'enabled' => 'activé', 'energy' => 'énergie', 'error' => 'erreur',
-            'fan' => 'ventilation', 'filter' => 'filtre', 'fridge' => 'réfrigérateur',
-            'hood' => 'hotte', 'kids' => 'enfants',
-            'level' => 'niveau', 'lock' => 'verrouillage', 'log' => 'historique',
-            'mode' => 'mode', 'open' => 'ouverture', 'option' => 'option',
-            'oven' => 'four', 'power' => 'puissance', 'quality' => 'qualité',
-            'refrigerator' => 'réfrigérateur', 'remaining' => 'restant',
-            'remote' => 'distance', 'rinse' => 'rinçage', 'set' => 'réglage',
-            'softener' => 'adoucissant', 'speed' => 'vitesse', 'spin' => 'essorage',
-            'state' => 'état', 'status' => 'état', 'supported' => 'disponible',
-            'target' => 'cible', 'temperature' => 'température', 'time' => 'temps',
-            'total' => 'total',
-            'type' => 'type', 'unit' => 'unité', 'update' => 'mise à jour',
-            'usage' => 'utilisation', 'value' => 'valeur', 'washer' => 'lave-linge',
-            'washing' => 'lavage', 'water' => 'eau',
+            'air' => __('air', __FILE__), 'alarm' => __('alerte', __FILE__), 'allow' => __('autorisation', __FILE__),
+            'available' => __('disponible', __FILE__), 'base' => __('base', __FILE__), 'child' => __('enfants', __FILE__),
+            'clean' => __('nettoyage', __FILE__), 'control' => __('contrôle', __FILE__), 'cooktop' => __('table de cuisson', __FILE__),
+            'count' => __('nombre', __FILE__), 'cumulative' => __('cumulée', __FILE__), 'current' => __('actuelle', __FILE__),
+            'cycle' => __('programme', __FILE__), 'date' => __('date', __FILE__), 'delay' => __('délai', __FILE__),
+            'desired' => __('souhaitée', __FILE__), 'detergent' => __('lessive', __FILE__), 'device' => __('appareil', __FILE__),
+            'dishwasher' => __('lave-vaisselle', __FILE__), 'door' => __('porte', __FILE__), 'dryer' => __('sèche-linge', __FILE__),
+            'enabled' => __('activé', __FILE__), 'energy' => __('énergie', __FILE__), 'error' => __('erreur', __FILE__),
+            'fan' => __('ventilation', __FILE__), 'filter' => __('filtre', __FILE__), 'fridge' => __('réfrigérateur', __FILE__),
+            'hood' => __('hotte', __FILE__), 'kids' => __('enfants', __FILE__),
+            'level' => __('niveau', __FILE__), 'lock' => __('verrouillage', __FILE__), 'log' => __('historique', __FILE__),
+            'mode' => __('mode', __FILE__), 'open' => __('ouverture', __FILE__), 'option' => __('option', __FILE__),
+            'oven' => __('four', __FILE__), 'power' => __('puissance', __FILE__), 'quality' => __('qualité', __FILE__),
+            'refrigerator' => __('réfrigérateur', __FILE__), 'remaining' => __('restant', __FILE__),
+            'remote' => __('distance', __FILE__), 'rinse' => __('rinçage', __FILE__), 'set' => __('réglage', __FILE__),
+            'softener' => __('adoucissant', __FILE__), 'speed' => __('vitesse', __FILE__), 'spin' => __('essorage', __FILE__),
+            'state' => __('état', __FILE__), 'status' => __('état', __FILE__), 'supported' => __('disponible', __FILE__),
+            'target' => __('cible', __FILE__), 'temperature' => __('température', __FILE__), 'time' => __('temps', __FILE__),
+            'total' => __('total', __FILE__),
+            'type' => __('type', __FILE__), 'unit' => __('unité', __FILE__), 'update' => __('mise à jour', __FILE__),
+            'usage' => __('utilisation', __FILE__), 'value' => __('valeur', __FILE__), 'washer' => __('lave-linge', __FILE__),
+            'washing' => __('lavage', __FILE__), 'water' => __('eau', __FILE__),
         );
         $translated = array();
         foreach ($words as $word) {
@@ -1358,7 +1381,7 @@ class LocalThingsMapper
             if (in_array($key, array('x', 'com', 'samsung', 'da', 'vs', 'st'), true) || ctype_digit($key)) {
                 continue;
             }
-            $translated[] = isset($tokens[$key]) ? $this->tr($tokens[$key]) : $word;
+            $translated[] = $tokens[$key] ?? $word;
         }
         return ucfirst(trim(implode(' ', $translated)));
     }
@@ -1366,25 +1389,25 @@ class LocalThingsMapper
     private function optionName($prefix)
     {
         $names = array(
-            'upperlamp' => 'Éclairage supérieur',
-            'sound' => 'Son',
-            'fastpreheat' => 'Préchauffage rapide',
-            'naturalsteam' => 'Vapeur naturelle',
-            'energysaving' => 'Économie d’énergie',
-            'burneronalert' => 'Alerte foyer allumé',
-            'spi' => 'Mode intelligent',
-            'autoclean' => 'Nettoyage automatique',
-            'airmonitoring' => 'Surveillance de l’air',
-            'stormwashzone' => 'Zone de lavage intensif',
-            'autodoorrelease' => 'Ouverture automatique de la porte',
-            'bubblesoak' => 'Bubble Soak',
-            'addwash' => 'Add Wash',
-            'prewashsetting' => 'Prélavage',
-            'intensivesetting' => 'Lavage intensif',
-            'energykw' => 'Consommation du cycle',
+            'upperlamp' => __('Éclairage supérieur', __FILE__),
+            'sound' => __('Son', __FILE__),
+            'fastpreheat' => __('Préchauffage rapide', __FILE__),
+            'naturalsteam' => __('Vapeur naturelle', __FILE__),
+            'energysaving' => __('Économie d’énergie', __FILE__),
+            'burneronalert' => __('Alerte foyer allumé', __FILE__),
+            'spi' => __('Mode intelligent', __FILE__),
+            'autoclean' => __('Nettoyage automatique', __FILE__),
+            'airmonitoring' => __('Surveillance de l’air', __FILE__),
+            'stormwashzone' => __('Zone de lavage intensif', __FILE__),
+            'autodoorrelease' => __('Ouverture automatique de la porte', __FILE__),
+            'bubblesoak' => __('Bubble Soak', __FILE__),
+            'addwash' => __('Add Wash', __FILE__),
+            'prewashsetting' => __('Prélavage', __FILE__),
+            'intensivesetting' => __('Lavage intensif', __FILE__),
+            'energykw' => __('Consommation du cycle', __FILE__),
         );
         $key = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $prefix));
-        return isset($names[$key]) ? $this->tr($names[$key]) : $this->translatedIdentifier($prefix);
+        return $names[$key] ?? $this->translatedIdentifier($prefix);
     }
 
     private function subtype($href, $field, $value, $actions = array())
@@ -1473,7 +1496,7 @@ class LocalThingsMapper
             return 'tr/min';
         }
         if (preg_match('/(?:drumCleanProposal|washingTimes)/i', $field)) {
-            return $this->tr('lavages');
+            return __('lavages', __FILE__);
         }
         if (preg_match('/openTime$/i', $field)) {
             return 'ms';
@@ -1634,12 +1657,4 @@ class LocalThingsMapper
         return $suffixLength === 0 || substr($value, -$suffixLength) === $suffix;
     }
 
-    private function tr($text)
-    {
-        if (!function_exists('__')) {
-            return $text;
-        }
-        $translated = __($text, __FILE__);
-        return trim((string) $translated) === '' ? $text : $translated;
-    }
 }
