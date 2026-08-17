@@ -252,44 +252,6 @@ class LocalThingsWidget
         return '';
     }
 
-    /**
-     * Adds Jeedom's native history hooks to the command widget returned by
-     * cmd::toHtml(), without wrapping it in a second .cmd element.
-     */
-    public static function historizedCommandHtml($html, $commandId)
-    {
-        $count = 0;
-        $html = preg_replace_callback(
-            '/class=(["\'])([^"\']*\bcmd\b[^"\']*)\1/i',
-            function ($matches) {
-                $classes = preg_split('/\s+/', trim($matches[2]));
-                $classes = array_values(array_filter($classes, function ($class) {
-                    return !in_array(strtolower($class), array('cmd', 'history', 'cursor'), true);
-                }));
-                array_unshift($classes, 'cmd', 'history', 'cursor');
-                return 'class=' . $matches[1] . implode(' ', $classes) . $matches[1];
-            },
-            (string) $html,
-            1,
-            $count
-        );
-        if ($count === 0) {
-            return (string) $html;
-        }
-        return preg_replace_callback(
-            '/<([a-z][a-z0-9:-]*)([^>]*\bclass=(["\'])cmd history cursor(?:\s[^"\']*)?\3[^>]*)>/i',
-            function ($matches) use ($commandId) {
-                $attributes = $matches[2];
-                if (preg_match('/\bdata-cmd_id\s*=/', $attributes) !== 1) {
-                    $attributes .= ' data-cmd_id="' . (int) $commandId . '"';
-                }
-                return '<' . $matches[1] . $attributes . '>';
-            },
-            $html,
-            1
-        );
-    }
-
     public static function isPercentageUnit($unit)
     {
         $unit = strtolower(trim((string) $unit));
@@ -425,7 +387,7 @@ class LocalThingsWidget
             return array('label' => __('Add Wash', __FILE__), 'icon' => 'fas fa-plus-circle', 'asset' => '');
         }
         if (strpos($identity, 'delay_') !== false) {
-            return array('label' => __('Départ différé', __FILE__), 'icon' => 'fas fa-clock', 'asset' => '');
+            return array('label' => __('Fin différée', __FILE__), 'icon' => 'fas fa-clock', 'asset' => '');
         }
         if (strpos($identity, 'temperature_desired') !== false || strpos($identity, 'setpoint') !== false) {
             return array('label' => __('Température', __FILE__), 'icon' => '', 'asset' => 'temperature.svg');

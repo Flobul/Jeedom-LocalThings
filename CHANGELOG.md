@@ -15,6 +15,12 @@
   traduction du core Jeedom.
 - Correction du nom des équipements dans la page Santé et présentation des
   alarmes Samsung sous forme d’un résumé lisible dans l’onglet Entretien.
+- État hors ligne fiable sur les widgets : valeurs de fonctionnement masquées,
+  commandes grisées et bloquées côté serveur jusqu’au prochain rafraîchissement.
+- Renommage de « Départ différé » en « Fin différée » sans modifier son
+  identifiant Jeedom, et amélioration visuelle du curseur natif Jeedom.
+- Suppression des doublons autour des curseurs, de l’historique et des mises à
+  jour de commandes au profit des mécanismes fournis par le core Jeedom.
 
 ## 0.4.5
 

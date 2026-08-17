@@ -2,7 +2,7 @@
 <div class="eqLogic eqLogic-widget #custom_layout# #class# localthings-widget localthings-widget-mobile"
      data-eqType="#eqType#" data-eqLogic_id="#id#" data-eqLogic_uid="#uid#" data-version="#version#"
      data-translate-category="#translate_category#" data-category="#category#" data-tags="#tags#"
-    data-device-type="#device_type#" style="width:#width#;height:#height#;#style#">
+    data-device-type="#device_type#" data-online="#health_online#" style="width:#width#;height:#height#;#style#">
     <center class="widget-name">
         <span class="cmd classTitreIcon health pull-left tippied" id="idHealth#uid#" data-cmd_id="#health_id#" data-online="#health_online#"
               data-title="{{Santé}} : #health_status#" style="display:#health_display#">
@@ -39,6 +39,10 @@
                 </button>
             </li>
         </ul>
+
+        <div class="localthings-widget-offline-notice" role="status">
+            <i class="fas fa-unlink"></i><span>{{Appareil hors ligne — commandes indisponibles}}</span>
+        </div>
 
         <div class="tab-content localthings-widget-pages">
             <div role="tabpanel" class="tab-pane active" id="localthings-main-#uid#">
@@ -80,6 +84,28 @@
 (function () {
     var widget = document.querySelector('.eqLogic[data-eqLogic_uid="#uid#"]');
     if (!widget) return;
+    var setOnlineState = function (online) {
+        widget.setAttribute('data-online', online ? 'true' : 'false');
+        widget.querySelectorAll('.localthings-widget-command-type-action').forEach(function (frame) {
+            frame.setAttribute('aria-disabled', online ? 'false' : 'true');
+            frame.querySelectorAll('button, input, select, textarea').forEach(function (control) {
+                if (!online && !control.disabled) {
+                    control.setAttribute('data-localthings-offline-disabled', '1');
+                    control.disabled = true;
+                } else if (online && control.getAttribute('data-localthings-offline-disabled') === '1') {
+                    control.disabled = false;
+                    control.removeAttribute('data-localthings-offline-disabled');
+                }
+            });
+        });
+    };
+    setOnlineState(widget.getAttribute('data-online') === 'true');
+    widget.addEventListener('click', function (event) {
+        if (widget.getAttribute('data-online') !== 'false') return;
+        if (!event.target.closest('.localthings-widget-command-type-action')) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }, true);
     var setToggleState = function (toggle, enabled) {
         toggle.checked = enabled;
         toggle.setAttribute('aria-checked', enabled ? 'true' : 'false');
@@ -133,11 +159,7 @@
     widget.querySelectorAll('.localthings-widget-percentage[data-cmd_id]').forEach(function (progress) {
         if (progress.getAttribute('data-progress-bound') === '1') return;
         progress.setAttribute('data-progress-bound', '1');
-        var frame = progress.closest('.localthings-widget-command');
-        var content = progress.closest('.localthings-widget-command-content');
-        var syncProgress = function () {
-            var state = frame ? frame.querySelector('.cmd-widget .state') : null;
-            var rawValue = state ? state.textContent : progress.getAttribute('data-value');
+        var syncProgress = function (rawValue) {
             var value = parseFloat(String(rawValue || '').replace(',', '.'));
             if (!isFinite(value)) value = 0;
             value = Math.max(0, Math.min(100, value));
@@ -146,12 +168,10 @@
             progress.setAttribute('aria-valuenow', value);
             progress.setAttribute('data-value', value);
         };
-        syncProgress();
-        if (content && typeof MutationObserver !== 'undefined') {
-            var observer = new MutationObserver(syncProgress);
-            observer.observe(content, {childList: true, characterData: true, subtree: true});
-            progress._localthingsObserver = observer;
-        }
+        syncProgress(progress.getAttribute('data-value'));
+        jeedom.cmd.addUpdateFunction(progress.getAttribute('data-cmd_id'), function (_options) {
+            syncProgress(typeof _options.value !== 'undefined' ? _options.value : _options.display_value);
+        });
     });
     var statusContainer = widget.querySelector('.localthings-widget-status');
     var normalizeStatus = function (value) {
@@ -163,9 +183,11 @@
     };
     var statusValue = function (frame) {
         if (!frame) return '';
-        var state = frame.querySelector('.cmd-widget .state, .cmd-widget .value');
-        var value = state ? state.textContent : '';
-        if (!String(value).trim()) value = frame.getAttribute('data-status-value') || '';
+        var value = frame.getAttribute('data-status-value') || '';
+        if (!String(value).trim()) {
+            var state = frame.querySelector('.cmd-widget .state, .cmd-widget .value');
+            value = state ? state.textContent : '';
+        }
         return normalizeStatus(value);
     };
     var syncOperatingStatus = function () {
@@ -190,19 +212,24 @@
         if (progress) progress.classList.toggle('localthings-status-active', operating);
     };
     syncOperatingStatus();
-    if (statusContainer && statusContainer.getAttribute('data-status-bound') !== '1'
-        && typeof MutationObserver !== 'undefined') {
-        statusContainer.setAttribute('data-status-bound', '1');
-        var statusObserver = new MutationObserver(syncOperatingStatus);
-        statusObserver.observe(statusContainer, {childList: true, characterData: true, subtree: true});
-        statusContainer._localthingsObserver = statusObserver;
+    if (statusContainer) {
+        statusContainer.querySelectorAll('[data-status-slot][data-cmd_id]').forEach(function (frame) {
+            if (frame.getAttribute('data-status-bound') === '1') return;
+            frame.setAttribute('data-status-bound', '1');
+            jeedom.cmd.addUpdateFunction(frame.getAttribute('data-cmd_id'), function (_options) {
+                var value = typeof _options.value !== 'undefined' ? _options.value : _options.display_value;
+                frame.setAttribute('data-status-value', value == null ? '' : value);
+                syncOperatingStatus();
+            });
+        });
     }
     var health = widget.querySelector('.health[data-cmd_id="#health_id#"]');
     if (health && '#health_id#' !== '') {
         jeedom.cmd.addUpdateFunction('#health_id#', function (_options) {
-            var value = typeof _options.display_value !== 'undefined' ? _options.display_value : _options.value;
+            var value = typeof _options.value !== 'undefined' ? _options.value : _options.display_value;
             var online = Number(value) === 1;
             var icon = health.querySelector('i');
+            setOnlineState(online);
             health.setAttribute('data-online', online ? 'true' : 'false');
             health.setAttribute('data-title', online ? '{{Santé : En ligne}}' : '{{Santé : Hors ligne}}');
             icon.className = online ? 'fas fa-link' : 'fas fa-unlink';

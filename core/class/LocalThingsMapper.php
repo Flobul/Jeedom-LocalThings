@@ -409,7 +409,7 @@ class LocalThingsMapper
             $action['unit'] = 'h';
             $entities[] = array(
                 'key' => $delayKey,
-                'name' => __('Départ différé', __FILE__),
+                'name' => __('Fin différée', __FILE__),
                 'platform' => 'number',
                 'type' => 'info',
                 'subtype' => 'numeric',

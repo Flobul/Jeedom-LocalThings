@@ -585,7 +585,9 @@ class localthings extends eqLogic
                 } elseif (is_bool($value)) {
                     $value = $value ? 1 : 0;
                 }
-                $commands[$key]->event($value);
+                // Laisse le core formater la valeur et n'émettre un évènement
+                // que lorsqu'elle a réellement changé.
+                $eqLogic->checkAndUpdateCmd($commands[$key], $value, false);
             }
         }
         $eqLogic->checkAndUpdateCmd('connected', $connected ? 1 : 0);
@@ -1018,9 +1020,8 @@ class localthings extends eqLogic
             );
         }
 
-        $refresh = $this->getCmd('action', 'refresh');
-        $replace['#refresh_id#'] = is_object($refresh) ? (int) $refresh->getId() : '';
-        $replace['#refresh_display#'] = is_object($refresh) && $refresh->getIsVisible() ? 'inline-block' : 'none';
+        // preToHtml() fournit déjà l'identifiant de la commande refresh visible.
+        $replace['#refresh_display#'] = $replace['#refresh_id#'] === '' ? 'none' : 'inline-block';
         $health = $this->getCmd('info', 'connected');
         $healthValue = is_object($health) ? (int) $health->execCmd() : 0;
         $replace['#health_id#'] = is_object($health) ? (int) $health->getId() : '';
@@ -1199,7 +1200,7 @@ class localthings extends eqLogic
             if ((string) $alarmSummary !== (string) $rawAlarm) {
                 // Migre immédiatement les anciennes valeurs JSON sans attendre
                 // le prochain rafraîchissement complet de l'appareil.
-                $command->event($alarmSummary);
+                $this->checkAndUpdateCmd($command, $alarmSummary, false);
             }
         }
         $html = $command->toHtml($version);
@@ -1225,13 +1226,6 @@ class localthings extends eqLogic
         $isPercentage = $command->getType() === 'info'
             && $command->getSubType() === 'numeric'
             && LocalThingsWidget::isPercentageUnit($command->getUnite());
-        if (
-            $command->getType() === 'info'
-            && $command->getSubType() === 'numeric'
-            && (int) $command->getIsHistorized() === 1
-        ) {
-            $html = LocalThingsWidget::historizedCommandHtml($html, $command->getId());
-        }
         $presentation = LocalThingsWidget::presentation(
             $deviceType,
             $entityKey,
@@ -1279,6 +1273,8 @@ class localthings extends eqLogic
                     . preg_replace('/[^a-z0-9_-]/i', '', $maintenanceRole);
             }
         }
+        $commandTypeClass = ' localthings-widget-command-type-'
+            . preg_replace('/[^a-z0-9_-]/i', '', (string) $command->getType());
         $statusClass = $statusSlot === '' ? '' : ' localthings-widget-status-' . $statusSlot;
         $statusAttributes = '';
         if ($statusSlot !== '') {
@@ -1292,7 +1288,7 @@ class localthings extends eqLogic
             }
         }
         return '<div class="localthings-widget-command localthings-widget-command-' . $subType
-            . $visualClass . $statusClass . $maintenanceClass
+            . $visualClass . $statusClass . $maintenanceClass . $commandTypeClass
             . '" data-command-group="' . $group . '" data-cmd_id="' . (int) $command->getId() . '"'
             . $statusAttributes . '>'
             . $visual . '<div class="localthings-widget-command-content">'
@@ -1313,6 +1309,12 @@ class localthingsCmd extends cmd
         }
         if ((string) $this->getConfiguration('operation', '') === 'refresh') {
             return $eqLogic->refresh();
+        }
+        $connected = $eqLogic->getCmd('info', 'connected');
+        if (!is_object($connected) || (int) $connected->execCmd() !== 1) {
+            throw new RuntimeException(
+                __('L’appareil est hors ligne. Rafraîchissez son état avant d’envoyer une commande.', __FILE__)
+            );
         }
         $fixed = json_decode((string) $this->getConfiguration('fixedValue', 'null'), true);
         switch ($this->getSubType()) {
