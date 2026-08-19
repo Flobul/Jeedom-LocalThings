@@ -11,8 +11,62 @@ class LocalThingsMapper
 {
     private const SENSITIVE_PATTERN = '/(?:password|passwd|token|secret|credential|certificate|privatekey|accesskey)/i';
 
+    /**
+     * Déduit la famille de l'appareil depuis OCF et les ressources Samsung.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources indexées par URI.
+     * @param array<string,mixed> $identity Identité OCF facultative.
+     * @return string Type d'appareil normalisé.
+     */
     public function deviceType($resources, $identity = array())
     {
+        // Les signatures combinent plusieurs ressources réellement exposées.
+        // Elles passent avant les métadonnées, car certains appareils comme
+        // le Qooker se déclarent génériquement comme four tout en exposant une
+        // surface de commande de micro-ondes.
+        $mode = $resources['/mode/vs/0'] ?? array();
+        $modeOptions = is_array($mode['x.com.samsung.da.options'] ?? null)
+            ? $mode['x.com.samsung.da.options']
+            : array();
+        $supportedModes = is_array($mode['x.com.samsung.da.supportedModes'] ?? null)
+            ? $mode['x.com.samsung.da.supportedModes']
+            : array();
+        $hasBakeMode = false;
+        foreach ($supportedModes as $supportedMode) {
+            if (is_string($supportedMode) && stripos($supportedMode, 'Bake') !== false) {
+                $hasBakeMode = true;
+                break;
+            }
+        }
+        $hasDeviceType = false;
+        $operationStates = 0;
+        foreach ($modeOptions as $option) {
+            if (!is_string($option)) {
+                continue;
+            }
+            $hasDeviceType = $hasDeviceType || strpos($option, 'DeviceType_') === 0;
+            if (strpos($option, 'OperationState') === 0) {
+                $operationStates++;
+            }
+        }
+        if ($hasDeviceType && $operationStates >= 2) {
+            return 'gas_cooktop';
+        }
+        if (isset($resources['/hood/fanspeed/vs/0'], $resources['/hood/lamp/vs/0'])) {
+            return 'range_hood';
+        }
+        if (isset($resources['/oven/vs/0'])) {
+            if (count(array_intersect(array('MicroWave', 'MicroWaveGrill', 'MicroWaveConvection'), $supportedModes)) > 0) {
+                return 'microwave';
+            }
+            if (
+                $hasBakeMode
+                && (isset($resources['/cooktopmonitoring/vs/0']) || isset($resources['/cooktop/status/vs/0']))
+            ) {
+                return 'range';
+            }
+        }
+
         $types = (array) ($identity['device_types'] ?? array());
         $ocfTypes = array(
             'oic.d.airconditioner' => 'airconditioner',
@@ -20,10 +74,16 @@ class LocalThingsMapper
             'oic.d.dishwasher' => 'dishwasher',
             'oic.d.dryer' => 'dryer',
             'oic.d.oven' => 'oven',
+            'oic.d.range' => 'range',
             'oic.d.refrigerator' => 'refrigerator',
+            'oic.d.krefrigerator' => 'refrigerator',
             'oic.d.washer' => 'washer',
+            'x.com.st.d.airqualitysensor' => 'air_monitor',
+            'x.com.st.d.dehumidifier' => 'dehumidifier',
+            'x.com.st.d.hood' => 'range_hood',
             'x.com.st.d.stickcleaner' => 'vacuum_station',
             'x.com.st.d.steamcloset' => 'air_dresser',
+            'x.com.st.d.winecellar' => 'refrigerator',
         );
         foreach ($types as $type) {
             if (isset($ocfTypes[$type])) {
@@ -46,10 +106,12 @@ class LocalThingsMapper
             'CAC' => 'airconditioner',
             'ARA' => 'airconditioner',
             'DHM' => 'dehumidifier',
+            'EHS' => 'ehs',
             'TVTL' => 'air_purifier',
             'VTWW' => 'air_purifier',
             'AVT' => 'air_purifier',
             'AIR' => 'air_purifier',
+            'ASM' => 'air_monitor',
             'WATERPURIFIER' => 'water_purifier',
             'ADW' => 'dishwasher',
             'AHD' => 'range_hood',
@@ -57,7 +119,7 @@ class LocalThingsMapper
             'OVEN' => 'oven',
             'MICROWAVE' => 'microwave',
             'COOKTOP' => 'induction_cooktop',
-            'CT' => 'cooktop',
+            'CT' => 'gas_cooktop',
             'VSKR' => 'vacuum_station',
             'VSWW' => 'vacuum_station',
             'DF' => 'air_dresser',
@@ -69,6 +131,12 @@ class LocalThingsMapper
             if (isset($tokenMap[$token])) {
                 return $tokenMap[$token];
             }
+        }
+        if (
+            isset($resources['/washer/vs/0'])
+            && stripos($model . ' ' . $description, 'ONEBODY') !== false
+        ) {
+            return 'washer';
         }
         foreach (array_reverse(explode('_', explode('/', $description, 2)[0])) as $segment) {
             $prefix = substr($segment, 0, 2);
@@ -85,29 +153,14 @@ class LocalThingsMapper
         if (isset($resources['/hood/fanspeed/vs/0'])) {
             return 'range_hood';
         }
-        if (isset($resources['/oven/vs/0']) && isset($resources['/cooktop/status/vs/0'])) {
+        if (
+            isset($resources['/oven/vs/0'])
+            && (isset($resources['/cooktop/status/vs/0']) || isset($resources['/cooktopmonitoring/vs/0']))
+        ) {
             return 'range';
         }
         if (isset($resources['/oven/vs/0'])) {
-            return 'range';
-        }
-        $modeOptions = (array) (($resources['/mode/vs/0']['x.com.samsung.da.options'] ?? array()));
-        $operationStates = 0;
-        $hasDeviceType = false;
-        foreach ($modeOptions as $option) {
-            if (!is_string($option)) {
-                continue;
-            }
-            $hasDeviceType = $hasDeviceType || strpos($option, 'DeviceType_') === 0;
-            if (strpos($option, 'OperationState') === 0) {
-                $operationStates++;
-            }
-        }
-        if ($hasDeviceType && $operationStates >= 2) {
-            return 'cooktop';
-        }
-        if (isset($resources['/washer/vs/0'])) {
-            return 'washer';
+            return 'oven';
         }
         if (isset($resources['/dryer/vs/0'])) {
             return 'dryer';
@@ -121,6 +174,12 @@ class LocalThingsMapper
         return 'unknown';
     }
 
+    /**
+     * Transforme les ressources locales en métadonnées et états de commandes.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources indexées par URI.
+     * @return array{entities:array<int,array<string,mixed>>,states:array<string,mixed>}
+     */
     public function map($resources)
     {
         $entities = array();
@@ -165,11 +224,79 @@ class LocalThingsMapper
         $this->appendOptionEntities($resources, $entities, $states);
         $this->appendCycleEntity($resources, $entities, $states);
         $this->appendOperationalEntities($resources, $entities, $states);
+        $this->appendAirQualityEntities($resources, $entities, $states);
         $this->appendMaintenanceSummary($resources, $entities, $states);
         $this->ensureUniqueEntityNames($entities);
         return array('entities' => $entities, 'states' => $states);
     }
 
+    /**
+     * Extrait les mesures lisibles des tableaux `/sensors/vs/0`.
+     *
+     * Cette forme est commune aux analyseurs d'air, purificateurs et hottes
+     * Samsung. Le second élément de certaines valeurs est un indice de classe
+     * propre au firmware et reste volontairement ignoré.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @param array<int,array<string,mixed>> $entities Entités complétées.
+     * @param array<string,mixed> $states États complétés.
+     * @return void
+     */
+    private function appendAirQualityEntities($resources, &$entities, &$states)
+    {
+        $items = $resources['/sensors/vs/0']['x.com.samsung.da.items'] ?? array();
+        if (!is_array($items)) {
+            return;
+        }
+        $definitions = array(
+            'CleanLevel' => array(__('Qualité de l’air', __FILE__), ''),
+            'Odor' => array(__('Niveau d’odeurs', __FILE__), ''),
+            'Dust' => array(__('Particules PM10', __FILE__), 'µg/m³'),
+            'FineDust' => array(__('Particules PM2,5', __FILE__), 'µg/m³'),
+            'SuperFineDust' => array(__('Particules PM1', __FILE__), 'µg/m³'),
+            'CO2' => array(__('CO₂', __FILE__), 'ppm'),
+        );
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $type = (string) ($item['x.com.samsung.da.type'] ?? '');
+            if (!isset($definitions[$type])) {
+                continue;
+            }
+            $value = $item['x.com.samsung.da.value'] ?? null;
+            if (is_array($value)) {
+                $value = reset($value);
+            }
+            if (!is_numeric($value)) {
+                continue;
+            }
+            $value = strpos((string) $value, '.') === false ? (int) $value : (float) $value;
+            $key = $this->entityKey('/sensors/vs/0', 'sensorItem.' . $type);
+            $entities[] = array(
+                'key' => $key,
+                'name' => $definitions[$type][0],
+                'platform' => 'sensor',
+                'type' => 'info',
+                'subtype' => 'numeric',
+                'unit' => $definitions[$type][1],
+                'category' => 'air_quality',
+                'value' => $value,
+                'options' => array(),
+                'actions' => array(),
+            );
+            $states[$key] = $value;
+        }
+    }
+
+    /**
+     * Construit le chemin et le corps CBOR correspondant à une action Jeedom.
+     *
+     * @param array<string,mixed> $recipe Recette d'écriture générée au mapping.
+     * @param mixed $value Valeur demandée.
+     * @param array<string,array<string,mixed>> $resources État courant des ressources.
+     * @return array{path:string[],body:array<string,mixed>}
+     */
     public function buildWrite($recipe, $value, $resources)
     {
         if (!is_array($recipe) || empty($recipe['href'])) {
@@ -207,6 +334,15 @@ class LocalThingsMapper
                     throw new InvalidArgumentException(__('Valeur numérique invalide', __FILE__));
                 }
                 $bodyValue = $value + 0;
+                break;
+            case 'numeric_string':
+                if (!is_numeric($value)) {
+                    throw new InvalidArgumentException(__('Valeur numérique invalide', __FILE__));
+                }
+                $bodyValue = (string) $value;
+                break;
+            case 'boolean_string':
+                $bodyValue = $this->toBoolean($value) ? 'true' : 'false';
                 break;
             case 'delay_hours':
                 if (!is_numeric($value)) {
@@ -247,6 +383,12 @@ class LocalThingsMapper
         );
     }
 
+    /**
+     * Détermine si l'appareil autorise les commandes distantes.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @return bool
+     */
     public function remoteControlEnabled($resources)
     {
         if (isset($resources['/remotectrl/0'])) {
@@ -260,6 +402,16 @@ class LocalThingsMapper
         return true;
     }
 
+    /**
+     * Génère uniquement les actions dont le contrat d'écriture est connu.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param mixed $value Valeur actuelle.
+     * @param array<string,mixed> $representation Représentation de la ressource.
+     * @param array<string,array<string,mixed>> $resources Ensemble des ressources.
+     * @return array<int,array<string,mixed>>
+     */
     private function actionsFor($href, $field, $value, $representation, $resources)
     {
         $actions = array();
@@ -272,11 +424,21 @@ class LocalThingsMapper
             $recipe['encoding'] = 'bool';
             return $this->switchActions($recipe);
         }
-        if ($href === '/power/vs/0' && $field === 'x.com.samsung.da.power') {
-            if (isset($resources['/power/0']) || !$this->modelAllowsPowerOnOff($resources)) {
+        if (
+            preg_match('#^/power(?:/[^/]+)?/vs/0$#', $href)
+            && $field === 'x.com.samsung.da.power'
+        ) {
+            if (
+                $href === '/power/vs/0'
+                && (isset($resources['/power/0']) || !$this->modelAllowsPowerOnOff($resources))
+            ) {
                 return array();
             }
             $recipe['encoding'] = 'on_off';
+            return $this->switchActions($recipe);
+        }
+        if ($href === '/dnd/vs/0' && $field === 'x.com.samsung.da.value') {
+            $recipe['encoding'] = 'boolean_string';
             return $this->switchActions($recipe);
         }
         if ($href === '/kidslock/0' && $field === 'value') {
@@ -302,6 +464,8 @@ class LocalThingsMapper
             'x.com.samsung.da.filterRemind',
             'x.com.samsung.da.remindBeep',
             'x.com.samsung.da.nightLight',
+            'x.com.samsung.da.away',
+            'muteonce',
         );
         if (in_array($field, $knownSwitches, true)) {
             $recipe['encoding'] = 'on_off';
@@ -325,7 +489,9 @@ class LocalThingsMapper
 
         $range = $this->rangeFor($field, $representation);
         if ($range !== null && is_numeric($value) && $this->isWritableNumberField($href, $field)) {
-            $recipe['encoding'] = is_int($value) ? 'integer' : 'number';
+            $recipe['encoding'] = is_string($value)
+                ? 'numeric_string'
+                : (is_int($value) ? 'integer' : 'number');
             $action = $this->valueAction('set', __('Régler', __FILE__), 'slider', $recipe);
             $action['min'] = $range[0];
             $action['max'] = $range[1];
@@ -336,6 +502,12 @@ class LocalThingsMapper
         return $actions;
     }
 
+    /**
+     * Vérifie si le modèle déclare la commande marche/arrêt comme disponible.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @return bool
+     */
     private function modelAllowsPowerOnOff($resources)
     {
         $setInfo = $resources['/wm/setinfo/vs/0'] ?? null;
@@ -349,6 +521,14 @@ class LocalThingsMapper
         return strtolower(trim((string) $setInfo[$field])) !== 'false';
     }
 
+    /**
+     * Ajoute les commandes de cycle et la fin différée.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @param array<int,array<string,mixed>> $entities Entités enrichies par référence.
+     * @param array<string,mixed> $states États enrichis par référence.
+     * @return void
+     */
     private function appendOperationalEntities($resources, &$entities, &$states)
     {
         $href = '/operational/state/vs/0';
@@ -423,6 +603,14 @@ class LocalThingsMapper
         }
     }
 
+    /**
+     * Convertit les jetons Samsung `.options` en entités lisibles.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @param array<int,array<string,mixed>> $entities Entités enrichies par référence.
+     * @param array<string,mixed> $states États enrichis par référence.
+     * @return void
+     */
     private function appendOptionEntities($resources, &$entities, &$states)
     {
         $writableSwitches = array(
@@ -513,6 +701,14 @@ class LocalThingsMapper
         }
     }
 
+    /**
+     * Ajoute un résumé humain de l'entretien du tambour lorsqu'il est calculable.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @param array<int,array<string,mixed>> $entities Entités enrichies par référence.
+     * @param array<string,mixed> $states États enrichis par référence.
+     * @return void
+     */
     private function appendMaintenanceSummary($resources, &$entities, &$states)
     {
         $proposal = null;
@@ -556,6 +752,14 @@ class LocalThingsMapper
         $states[$key] = $value;
     }
 
+    /**
+     * Ajoute le programme courant et ses choix réellement disponibles.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @param array<int,array<string,mixed>> $entities Entités enrichies par référence.
+     * @param array<string,mixed> $states États enrichis par référence.
+     * @return void
+     */
     private function appendCycleEntity($resources, &$entities, &$states)
     {
         $href = '/course/vs/0';
@@ -617,6 +821,13 @@ class LocalThingsMapper
         $states[$key] = $current;
     }
 
+    /**
+     * Décode la liste compacte des programmes acceptés par l'appareil.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @param string|null $current Code du programme courant.
+     * @return string[]
+     */
     private function cycleOptions($resources, $current)
     {
         $edit = $resources['/wm/editcourse/vs/0']['x.com.samsung.da.editCourseList'] ?? null;
@@ -663,6 +874,13 @@ class LocalThingsMapper
         return array();
     }
 
+    /**
+     * Extrait la valeur d'un jeton d'option préfixé.
+     *
+     * @param mixed[] $options Jetons Samsung.
+     * @param string $prefix Préfixe recherché.
+     * @return string|null
+     */
     private function optionValue($options, $prefix)
     {
         foreach ((array) $options as $option) {
@@ -674,6 +892,12 @@ class LocalThingsMapper
         return null;
     }
 
+    /**
+     * Retourne l'identifiant de la table de programmes annoncée.
+     *
+     * @param array<string,array<string,mixed>> $resources Ressources courantes.
+     * @return string
+     */
     private function courseTable($resources)
     {
         foreach (array('/st/washercourse/vs/0', '/st/dryercourse/vs/0') as $href) {
@@ -685,6 +909,13 @@ class LocalThingsMapper
         return '';
     }
 
+    /**
+     * Traduit un code de programme selon sa table Samsung.
+     *
+     * @param string $table Identifiant de table.
+     * @param string $code Code du programme.
+     * @return string
+     */
     private function courseLabel($table, $code)
     {
         $tables = array(
@@ -734,6 +965,12 @@ class LocalThingsMapper
         return $tables[$table][$code] ?? $code;
     }
 
+    /**
+     * Crée la paire d'actions marche et arrêt d'un interrupteur.
+     *
+     * @param array<string,mixed> $recipe Recette commune.
+     * @return array<int,array<string,mixed>>
+     */
     private function switchActions($recipe)
     {
         return array(
@@ -742,6 +979,15 @@ class LocalThingsMapper
         );
     }
 
+    /**
+     * Construit la description d'une action à valeur fixe.
+     *
+     * @param string $key Suffixe logique de l'action.
+     * @param string $name Nom visible.
+     * @param array<string,mixed> $recipe Recette d'écriture.
+     * @param mixed $value Valeur fixe.
+     * @return array<string,mixed>
+     */
     private function fixedAction($key, $name, $recipe, $value = null)
     {
         return array(
@@ -755,6 +1001,16 @@ class LocalThingsMapper
         );
     }
 
+    /**
+     * Construit la description d'une action recevant une valeur.
+     *
+     * @param string $key Suffixe logique de l'action.
+     * @param string $name Nom visible.
+     * @param string $subtype Sous-type Jeedom.
+     * @param array<string,mixed> $recipe Recette d'écriture.
+     * @param array<int,mixed> $options Valeurs proposées.
+     * @return array<string,mixed>
+     */
     private function valueAction($key, $name, $subtype, $recipe, $options = array())
     {
         return array(
@@ -772,6 +1028,14 @@ class LocalThingsMapper
         );
     }
 
+    /**
+     * Recherche les valeurs prises en charge associées à un champ.
+     *
+     * @param string $field Champ courant.
+     * @param mixed $value Valeur actuelle.
+     * @param array<string,mixed> $representation Représentation de la ressource.
+     * @return mixed[]
+     */
     private function optionsFor($field, $value, $representation)
     {
         $candidates = array();
@@ -803,6 +1067,13 @@ class LocalThingsMapper
         return array();
     }
 
+    /**
+     * Associe chaque valeur d'une liste à son libellé utilisateur.
+     *
+     * @param string $field Champ Samsung.
+     * @param mixed[] $options Valeurs brutes.
+     * @return array<int,array{value:string,label:string}>
+     */
     private function labelOptions($field, $options)
     {
         $result = array();
@@ -819,6 +1090,13 @@ class LocalThingsMapper
         return $result;
     }
 
+    /**
+     * Formate une option Samsung pour l'affichage Jeedom.
+     *
+     * @param string $field Champ Samsung.
+     * @param mixed $value Valeur brute.
+     * @return string
+     */
     private function optionLabel($field, $value)
     {
         $normalized = strtolower((string) $value);
@@ -867,6 +1145,13 @@ class LocalThingsMapper
         return $labels[$normalized] ?? (string) $value;
     }
 
+    /**
+     * Recherche les bornes et le pas d'un champ numérique.
+     *
+     * @param string $field Champ Samsung.
+     * @param array<string,mixed> $representation Représentation de la ressource.
+     * @return array{0:int|float,1:int|float,2:int|float}|null
+     */
     private function rangeFor($field, $representation)
     {
         foreach (array('range', $field . 'Range', 'x.com.samsung.da.range') as $rangeField) {
@@ -882,9 +1167,26 @@ class LocalThingsMapper
                 return array($range[0] + 0, $range[1] + 0, $step);
             }
         }
+        $minimum = $representation['x.com.samsung.da.minimum'] ?? ($representation['minimum'] ?? null);
+        $maximum = $representation['x.com.samsung.da.maximum'] ?? ($representation['maximum'] ?? null);
+        if (is_numeric($minimum) && is_numeric($maximum)) {
+            $step = $representation['x.com.samsung.da.increment'] ?? ($representation['increment'] ?? 1);
+            return array(
+                $minimum + 0,
+                $maximum + 0,
+                is_numeric($step) ? $step + 0 : 1,
+            );
+        }
         return null;
     }
 
+    /**
+     * Indique si une option possède un contrat d'écriture connu.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @return bool
+     */
     private function isWritableOptionField($href, $field)
     {
         if (
@@ -908,12 +1210,25 @@ class LocalThingsMapper
             || strpos($href, '/specialzone/') !== false;
     }
 
+    /**
+     * Indique si un nombre peut être exposé comme curseur d'action.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @return bool
+     */
     private function isWritableNumberField($href, $field)
     {
         return strpos($href, '/temperature/desired/') !== false
             || preg_match('/(?:desired|target|setpoint|brightness|level|humidity)/i', $field) === 1;
     }
 
+    /**
+     * Filtre les métadonnées, listes techniques et champs sensibles.
+     *
+     * @param mixed $field Nom du champ.
+     * @return bool
+     */
     private function includeField($field)
     {
         if (!is_string($field) || $field === '' || preg_match(self::SENSITIVE_PATTERN, $field)) {
@@ -925,8 +1240,23 @@ class LocalThingsMapper
         return !in_array($field, array('href', 'rt', 'if', 'p', 'eps', 'range'), true);
     }
 
+    /**
+     * Évite les doublons lorsqu'une ressource OCF standard remplace un fallback.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param array<string,array<string,mixed>> $resources Ensemble des ressources.
+     * @return bool
+     */
     private function skipFallbackField($href, $field, $resources)
     {
+        if (
+            $href === '/sensors/vs/0'
+            && $field === 'x.com.samsung.da.cleanLevel'
+            && !empty($resources[$href]['x.com.samsung.da.items'])
+        ) {
+            return true;
+        }
         $fallbacks = array(
             '/power/vs/0' => array('x.com.samsung.da.power', '/power/0'),
             '/kidslock/vs/0' => array('x.com.samsung.da.kidsLock', '/kidslock/0'),
@@ -938,6 +1268,15 @@ class LocalThingsMapper
         return $field === $fallbacks[$href][0] && isset($resources[$fallbacks[$href][1]]);
     }
 
+    /**
+     * Convertit une valeur brute en état lisible et cohérent pour Jeedom.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param mixed $value Valeur brute.
+     * @param array<string,mixed> $representation Représentation complète.
+     * @return mixed
+     */
     private function displayValue($href, $field, $value, $representation = array())
     {
         if (
@@ -994,6 +1333,9 @@ class LocalThingsMapper
      * Samsung exposes /alarms/vs/0 on several appliance families. Rows kept
      * as Deleted and placeholder codes ending in _OFF are inactive; this is
      * the same cross-family rule used by mbillow/localthings common.ALARMS.
+     *
+     * @param mixed $items Collection ou JSON d'alarmes Samsung.
+     * @return string Résumé traduit des alarmes actives.
      */
     public function formatAlarmSummary($items)
     {
@@ -1050,6 +1392,12 @@ class LocalThingsMapper
             : __('Aucune alarme active', __FILE__);
     }
 
+    /**
+     * Décode les différentes enveloppes JSON utilisées pour les alarmes.
+     *
+     * @param mixed $items Valeur brute.
+     * @return array<int,array<string,mixed>>|null
+     */
     private function decodedAlarmItems($items)
     {
         if (is_string($items)) {
@@ -1079,6 +1427,12 @@ class LocalThingsMapper
         return array_values($items);
     }
 
+    /**
+     * Formate l'horodatage Samsung d'une alarme.
+     *
+     * @param mixed $value Horodatage brut.
+     * @return string Date lisible, ou chaîne vide.
+     */
     private function alarmTimeLabel($value)
     {
         if (
@@ -1097,6 +1451,12 @@ class LocalThingsMapper
         return '';
     }
 
+    /**
+     * Traduit un code d'alarme en message utilisateur.
+     *
+     * @param string $code Code Samsung.
+     * @return string
+     */
     private function alarmCodeLabel($code)
     {
         $normalized = strtolower(preg_replace('/[^a-z0-9]/i', '', (string) $code));
@@ -1130,6 +1490,12 @@ class LocalThingsMapper
         return __('Alerte', __FILE__) . ' (' . (string) $code . ')';
     }
 
+    /**
+     * Traduit les états textuels génériques connus.
+     *
+     * @param mixed $value Valeur brute.
+     * @return mixed Valeur traduite ou valeur originale.
+     */
     private function translatedValue($value)
     {
         $labels = array(
@@ -1155,6 +1521,12 @@ class LocalThingsMapper
         return $labels[$key] ?? $value;
     }
 
+    /**
+     * Traduit l'état opérationnel d'un cycle.
+     *
+     * @param mixed $value État Samsung.
+     * @return string
+     */
     private function operationalStateLabel($value)
     {
         $labels = array(
@@ -1169,6 +1541,13 @@ class LocalThingsMapper
         return $labels[$normalized] ?? (string) $value;
     }
 
+    /**
+     * Génère une clé d'entité courte, lisible et stable.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @return string
+     */
     private function entityKey($href, $field)
     {
         $base = trim(str_replace(array('x.com.samsung.da.', '/', '.', '-', ':'), '_', $href . '_' . $field), '_');
@@ -1176,6 +1555,13 @@ class LocalThingsMapper
         return substr($base, 0, 80) . '_' . substr(sha1($href . "\0" . $field), 0, 8);
     }
 
+    /**
+     * Produit le nom utilisateur d'une ressource et de son champ.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @return string
+     */
     private function humanName($href, $field)
     {
         $known = array(
@@ -1185,6 +1571,18 @@ class LocalThingsMapper
             '/kidslock/vs/0|x.com.samsung.da.kidsLock' => __('Sécurité enfants', __FILE__),
             '/remotectrl/0|value' => __('Contrôle à distance', __FILE__),
             '/remotectrl/vs/0|x.com.samsung.da.remoteControlEnabled' => __('Contrôle à distance', __FILE__),
+            '/dnd/vs/0|x.com.samsung.da.value' => __('Ne pas déranger', __FILE__),
+            '/dnd/vs/0|x.com.samsung.da.startTime' => __('Début du mode Ne pas déranger', __FILE__),
+            '/dnd/vs/0|x.com.samsung.da.endTime' => __('Fin du mode Ne pas déranger', __FILE__),
+            '/mode/vs/0|x.com.samsung.da.modes' => __('Mode', __FILE__),
+            '/mode/dhw/vs/0|x.com.samsung.da.modes' => __('Mode eau chaude', __FILE__),
+            '/power/dhw/vs/0|x.com.samsung.da.power' => __('Chauffe-eau', __FILE__),
+            '/temperatures/indoor/vs/0|x.com.samsung.da.current' => __('Température intérieure', __FILE__),
+            '/temperatures/indoor/vs/0|x.com.samsung.da.desired' => __('Consigne intérieure', __FILE__),
+            '/temperatures/dhw/vs/0|x.com.samsung.da.current' => __('Température de l’eau chaude', __FILE__),
+            '/temperatures/dhw/vs/0|x.com.samsung.da.desired' => __('Consigne d’eau chaude', __FILE__),
+            '/option/outgoing/vs/0|x.com.samsung.da.away' => __('Mode absence', __FILE__),
+            '/option/muteonce/vs/0|muteonce' => __('Son', __FILE__),
             '/washer/vs/0|x.com.samsung.da.waterTemperature' => __('Température de lavage', __FILE__),
             '/washer/vs/0|x.com.samsung.da.spinLevel' => __('Vitesse d’essorage', __FILE__),
             '/washer/vs/0|x.com.samsung.da.rinseCycles' => __('Nombre de rinçages', __FILE__),
@@ -1235,6 +1633,12 @@ class LocalThingsMapper
         return $fieldLabel !== '' ? $fieldLabel : $resourceLabel;
     }
 
+    /**
+     * Rend les noms d'entités uniques sans modifier leurs clés stables.
+     *
+     * @param array<int,array<string,mixed>> $entities Entités modifiées par référence.
+     * @return void
+     */
     private function ensureUniqueEntityNames(&$entities)
     {
         $used = array();
@@ -1254,6 +1658,12 @@ class LocalThingsMapper
         unset($entity);
     }
 
+    /**
+     * Normalise un nom pour les comparaisons d'unicité.
+     *
+     * @param string $name Nom visible.
+     * @return string
+     */
     private function nameKey($name)
     {
         $name = trim((string) $name);
@@ -1262,6 +1672,12 @@ class LocalThingsMapper
             : strtolower($name);
     }
 
+    /**
+     * Transforme un identifiant technique en libellé français.
+     *
+     * @param string $identifier Identifiant Samsung ou chemin de ressource.
+     * @return string
+     */
     private function translatedIdentifier($identifier)
     {
         $identifier = preg_replace('/^x\.com\.samsung\.da\./i', '', (string) $identifier);
@@ -1386,6 +1802,12 @@ class LocalThingsMapper
         return ucfirst(trim(implode(' ', $translated)));
     }
 
+    /**
+     * Retourne le nom humain d'un préfixe d'option Samsung.
+     *
+     * @param string $prefix Préfixe d'option.
+     * @return string
+     */
     private function optionName($prefix)
     {
         $names = array(
@@ -1410,6 +1832,15 @@ class LocalThingsMapper
         return $names[$key] ?? $this->translatedIdentifier($prefix);
     }
 
+    /**
+     * Détermine le sous-type Jeedom d'une information.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param mixed $value Valeur courante.
+     * @param array<int,array<string,mixed>> $actions Actions associées.
+     * @return string `binary`, `numeric` ou `string`.
+     */
     private function subtype($href, $field, $value, $actions = array())
     {
         if ($this->isBinaryField($href, $field, $value) || is_bool($value)) {
@@ -1426,6 +1857,15 @@ class LocalThingsMapper
         return is_numeric($value) ? 'numeric' : 'string';
     }
 
+    /**
+     * Déduit la famille visuelle de la commande.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param mixed $value Valeur courante.
+     * @param array<int,array<string,mixed>> $actions Actions associées.
+     * @return string
+     */
     private function platform($href, $field, $value, $actions)
     {
         if (count($actions) > 0) {
@@ -1437,6 +1877,15 @@ class LocalThingsMapper
         return 'raw';
     }
 
+    /**
+     * Détermine et normalise l'unité Jeedom d'une valeur numérique.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param array<string,mixed> $representation Représentation complète.
+     * @param mixed $value Valeur courante.
+     * @return string
+     */
     private function unit($href, $field, $representation = array(), $value = null)
     {
         if (preg_match('/unit$/i', (string) $field)) {
@@ -1516,6 +1965,13 @@ class LocalThingsMapper
         return '';
     }
 
+    /**
+     * Recherche l'unité explicitement annoncée à côté d'un champ.
+     *
+     * @param string $field Champ Samsung.
+     * @param mixed $representation Représentation complète.
+     * @return string
+     */
     private function explicitUnit($field, $representation)
     {
         if (!is_array($representation)) {
@@ -1549,6 +2005,12 @@ class LocalThingsMapper
         return '';
     }
 
+    /**
+     * Canonicalise les variantes d'unités vers les symboles Jeedom usuels.
+     *
+     * @param mixed $unit Unité annoncée par l'appareil.
+     * @return string Unité sûre, ou chaîne vide.
+     */
     private function normalizeUnit($unit)
     {
         $raw = trim((string) $unit);
@@ -1585,6 +2047,14 @@ class LocalThingsMapper
         return preg_match('/^[\pL\d°%µμ\/³²·._-]{1,16}$/u', $raw) ? $raw : '';
     }
 
+    /**
+     * Détermine si un champ représente réellement un état binaire.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @param mixed $value Valeur courante.
+     * @return bool
+     */
     private function isBinaryField($href, $field, $value)
     {
         $known = array(
@@ -1608,6 +2078,13 @@ class LocalThingsMapper
         return preg_match('/(?:power|lock|enabled|indicator|alarm|allow|control|bypass|proposal)$/i', $field) === 1;
     }
 
+    /**
+     * Affecte une catégorie interne aux informations de diagnostic.
+     *
+     * @param string $href URI de la ressource.
+     * @param string $field Champ Samsung.
+     * @return string
+     */
     private function category($href, $field)
     {
         return preg_match('/(?:diagnostic|error|alarm|firmware|version|serial|model)/i', $href . ' ' . $field)
@@ -1615,6 +2092,13 @@ class LocalThingsMapper
             : '';
     }
 
+    /**
+     * Compare deux noms de champs après retrait des qualificatifs usuels.
+     *
+     * @param string $field Champ principal.
+     * @param string $candidate Champ candidat.
+     * @return bool
+     */
     private function similarField($field, $candidate)
     {
         $normalize = function ($value) {
@@ -1628,6 +2112,12 @@ class LocalThingsMapper
             || strpos($right, $left) !== false;
     }
 
+    /**
+     * Convertit une durée `HH:MM:SS` en heures décimales.
+     *
+     * @param mixed $value Durée Samsung.
+     * @return float|int
+     */
     private function durationHours($value)
     {
         $parts = array_map('intval', explode(':', (string) $value));
@@ -1640,6 +2130,12 @@ class LocalThingsMapper
         return 0;
     }
 
+    /**
+     * Interprète les représentations booléennes rencontrées dans le protocole.
+     *
+     * @param mixed $value Valeur brute.
+     * @return bool
+     */
     private function toBoolean($value)
     {
         if (is_bool($value)) {
@@ -1651,6 +2147,13 @@ class LocalThingsMapper
         return in_array(strtolower(trim((string) $value)), array('1', 'true', 'on', 'enable', 'enabled', 'yes'), true);
     }
 
+    /**
+     * Vérifie la fin d'une chaîne sans dépendre des fonctions PHP récentes.
+     *
+     * @param string $value Chaîne complète.
+     * @param string $suffix Suffixe recherché.
+     * @return bool
+     */
     private function endsWith($value, $suffix)
     {
         $suffixLength = strlen($suffix);

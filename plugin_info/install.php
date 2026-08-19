@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * Crée ou normalise la tâche Jeedom utilisée comme démon de rafraîchissement.
+ *
+ * @return void
+ */
 function localthings_configure_poll_cron()
 {
     $cron = cron::byClassAndFunction('localthings', 'poll');
@@ -16,6 +21,13 @@ function localthings_configure_poll_cron()
     $cron->save();
 }
 
+/**
+ * Ramène une ancienne valeur d'intervalle vers un choix pris en charge.
+ *
+ * @param mixed $value Valeur à normaliser.
+ * @param string $fallback Valeur de repli autorisée.
+ * @return string
+ */
 function localthings_normalize_poll_interval($value, $fallback = '5')
 {
     $allowed = array('10s', '20s', '30s', '1', '2', '3', '4', '5', '10', '15', '20', '30', '45', '60', '120', '240', '360', '720', '1440');
@@ -42,6 +54,11 @@ function localthings_normalize_poll_interval($value, $fallback = '5')
     return (string) $closest;
 }
 
+/**
+ * Initialise la configuration lors de l'installation du plugin.
+ *
+ * @return void
+ */
 function localthings_install()
 {
     config::save('poll_interval_online', '1', 'localthings');
@@ -50,6 +67,11 @@ function localthings_install()
     localthings_configure_poll_cron();
 }
 
+/**
+ * Migre la configuration et recrée la tâche lors d'une mise à jour.
+ *
+ * @return void
+ */
 function localthings_update()
 {
     $legacy = localthings_normalize_poll_interval(
@@ -74,6 +96,11 @@ function localthings_update()
     localthings_configure_poll_cron();
 }
 
+/**
+ * Supprime la tâche de rafraîchissement lors de la désinstallation.
+ *
+ * @return void
+ */
 function localthings_remove()
 {
     $cron = cron::byClassAndFunction('localthings', 'poll');

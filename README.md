@@ -22,6 +22,9 @@ les commandes.
 - Les crons Jeedom lisent périodiquement les appareils, sur le même principe
   que le plugin SmartThings. Une action ouvre une session locale, écrit sa
   valeur puis relit l'état.
+- Les ressources OCF d'identité sont interrogées pendant la découverte. Les
+  rafraîchissements courants relisent uniquement l'état `/device/0` et
+  réutilisent les métadonnées stables déjà enregistrées dans Jeedom.
 - PHP ne proposant pas de transport `dtls://`, le plugin pilote
   `openssl s_client` par `proc_open`. OpenSSL assure uniquement le chiffrement
   DTLS ; aucun service local intermédiaire n'est démarré.
@@ -115,10 +118,12 @@ Les appareils doivent exposer un port CoAP-DTLS dans la plage UDP
 `49152-49160`. Les générations plus anciennes qui n'exposent que le port
 HTTPS `8888` ne sont pas prises en charge.
 
-Familles reconnues par le mappeur embarqué : climatiseurs, purificateurs
-d'air, déshumidificateurs, sèche-linge, fours, micro-ondes, plaques de cuisson,
-hottes, cuisinières, lave-vaisselle, réfrigérateurs, lave-linge,
-purificateurs d'eau, stations d'aspirateur et armoires AirDresser.
+Familles reconnues par le mappeur embarqué : climatiseurs, analyseurs et
+purificateurs d'air, déshumidificateurs, pompes à chaleur Samsung EHS,
+sèche-linge, fours, micro-ondes, plaques de cuisson gaz ou induction, hottes,
+cuisinières, lave-vaisselle, réfrigérateurs, lave-linge, purificateurs d'eau,
+stations d'aspirateur et armoires AirDresser. Le typage et le mapping sont
+contrôlés localement avec les fixtures publiques du projet `mbillow/localthings`.
 
 Certaines écritures exigent que **Smart Control** soit activé sur l'appareil.
 Le contournement proposé dans la configuration d'un équipement ne doit être
@@ -137,6 +142,13 @@ la maîtrise de sa provenance. La feuille client RSA est générée localement e
 signée en SHA-256, conformément au flux de configuration de LocalThings. La
 chaîne AC14K_M comporte elle-même des éléments historiques acceptés uniquement
 sur ce canal DTLS local.
+
+Le bundle communautaire est téléchargé depuis une révision Git déterminée et
+son empreinte SHA-256 est contrôlée avant installation. La lecture du
+certificat public de la passerelle Samsung tente d'abord une validation TLS
+complète. Si la chaîne système ne permet pas cette validation, le plugin
+effectue une seconde tentative TLS sans validation et inscrit clairement ce
+repli dans le journal afin de préserver la compatibilité.
 
 N'utilisez le plugin que pour des appareils et un réseau dont vous êtes
 propriétaire ou administrateur.

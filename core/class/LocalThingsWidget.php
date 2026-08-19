@@ -10,6 +10,12 @@
  */
 class LocalThingsWidget
 {
+    /**
+     * Retourne le profil visuel et fonctionnel d'une famille d'appareils.
+     *
+     * @param string $deviceType Type d'appareil détecté.
+     * @return array<string,mixed> Profil normalisé du widget.
+     */
     public static function profile($deviceType)
     {
         $profiles = array(
@@ -62,6 +68,13 @@ class LocalThingsWidget
                 'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'mode_', 'wind_strength', 'airflow', 'fanspeed', 'ailevel'),
             ),
+            'air_monitor' => array(
+                'label' => __('Analyseur d’air', __FILE__),
+                'icon' => 'fas fa-smog',
+                'accent' => '#2a9d8f',
+                'settings_title' => __('Qualité de l’air', __FILE__),
+                'features' => array('dnd_', 'airquality', 'sensor', 'humidity', 'battery'),
+            ),
             'dehumidifier' => array(
                 'label' => __('Déshumidificateur', __FILE__),
                 'icon' => 'fas fa-tint',
@@ -75,6 +88,13 @@ class LocalThingsWidget
                 'accent' => '#0096c7',
                 'settings_title' => __('Réglages', __FILE__),
                 'features' => array('power_', 'mode_', 'water', 'temperature_desired', 'autofill'),
+            ),
+            'ehs' => array(
+                'label' => __('Pompe à chaleur EHS', __FILE__),
+                'icon' => 'fas fa-temperature-high',
+                'accent' => '#2878b5',
+                'settings_title' => __('Chauffage et eau chaude', __FILE__),
+                'features' => array('power_', 'mode_', 'temperature', 'dhw', 'away', 'mute'),
             ),
             'oven' => array(
                 'label' => __('Four', __FILE__),
@@ -103,6 +123,13 @@ class LocalThingsWidget
                 'accent' => '#ef476f',
                 'settings_title' => __('Cuisson', __FILE__),
                 'features' => array('cooktop', 'mode_', 'specialzone', 'burner', 'powerlevel', 'temperature_desired'),
+            ),
+            'gas_cooktop' => array(
+                'label' => __('Table de cuisson gaz', __FILE__),
+                'icon' => 'fas fa-fire',
+                'accent' => '#e85d04',
+                'settings_title' => __('Cuisson', __FILE__),
+                'features' => array('cooktop', 'mode_', 'burner', 'powerlevel', 'hot_surface', 'kidslock'),
             ),
             'induction_cooktop' => array(
                 'label' => __('Table à induction', __FILE__),
@@ -141,6 +168,17 @@ class LocalThingsWidget
         );
     }
 
+    /**
+     * Détermine la page du widget qui doit recevoir une commande.
+     *
+     * @param string $deviceType Type d'appareil.
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $commandType Type Jeedom de la commande.
+     * @param string $subType Sous-type Jeedom de la commande.
+     * @param string $category Catégorie fournie par LocalThings.
+     * @param string $name Nom visible de la commande.
+     * @return string Identifiant de la page cible ou `hidden`.
+     */
     public static function group($deviceType, $entityKey, $commandType, $subType = '', $category = '', $name = '')
     {
         $identity = strtolower(
@@ -202,6 +240,12 @@ class LocalThingsWidget
     /**
      * Keeps the Information page intentional: it contains useful secondary
      * states, not every raw field exposed by the appliance firmware.
+     *
+     * @param string $deviceType Type d'appareil.
+     * @param string $identity Identité normalisée de la commande.
+     * @param string $commandType Type Jeedom de la commande.
+     * @param string $category Catégorie LocalThings.
+     * @return bool Vrai lorsque l'information mérite d'être affichée.
      */
     public static function isRelevantDetail($deviceType, $identity, $commandType = 'info', $category = '')
     {
@@ -219,6 +263,13 @@ class LocalThingsWidget
         return $role !== '' && ($role !== 'tank' || $deviceType !== 'washer');
     }
 
+    /**
+     * Identifie le rôle d'une commande affichable dans les informations utiles.
+     *
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $name Nom visible de la commande.
+     * @return string Rôle reconnu, ou chaîne vide.
+     */
     public static function detailRole($entityKey, $name = '')
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
@@ -249,15 +300,30 @@ class LocalThingsWidget
         if (preg_match('/(?:tank|reservoir|réservoir).*(?:level|status|empty|full)/', $identity)) {
             return 'tank';
         }
+        if (preg_match('/(?:battery|batterie)/', $identity)) {
+            return 'battery';
+        }
         return '';
     }
 
+    /**
+     * Indique si une unité représente un pourcentage.
+     *
+     * @param string $unit Unité à analyser.
+     * @return bool
+     */
     public static function isPercentageUnit($unit)
     {
         $unit = strtolower(trim((string) $unit));
         return in_array($unit, array('%', 'percent', 'percentage', 'pourcentage'), true);
     }
 
+    /**
+     * Normalise une valeur de pourcentage dans l'intervalle 0 à 100.
+     *
+     * @param mixed $value Valeur brute.
+     * @return float
+     */
     public static function percentageValue($value)
     {
         if (is_string($value)) {
@@ -269,6 +335,12 @@ class LocalThingsWidget
         return max(0.0, min(100.0, (float) $value));
     }
 
+    /**
+     * Détermine si un libellé d'état correspond à un appareil en fonctionnement.
+     *
+     * @param mixed $value État brut ou traduit.
+     * @return bool
+     */
     public static function isOperatingState($value)
     {
         $value = trim((string) $value);
@@ -292,14 +364,27 @@ class LocalThingsWidget
         ) === 1;
     }
 
+    /**
+     * Détecte les métadonnées techniques qui ne doivent pas encombrer le widget.
+     *
+     * @param string $identity Identité normalisée de la commande.
+     * @return bool
+     */
     private static function isTechnicalDetail($identity)
     {
         return preg_match(
-            '/(?:supported|available|edit[ _-]?course|course.*table|washercourse|dryercourse|modelnum|serialnum|description|firmware|softwareversion|manufacturer|increment|dateutc|timestamp|device[ _-]?type|update.*allow|laundry.*out.*time|seamless.*control|usages.*db|most.*used|energy.*level.*set|special.*function|detergent.*(?:once|base|type)|drum.*clean.*log|time.*sync|(?:power|consumption).*(?:unit|date)|rawvalue)/',
+            '/(?:supported|available|edit[ _-]?course|course.*table|washercourse|dryercourse|modelnum|serialnum|description|firmware|softwareversion|manufacturer|increment|dateutc|timestamp|device[ _-]?type|update.*allow|laundry.*out.*time|seamless.*control|usages.*db|most.*used|energy.*level.*set|special.*function|detergent.*(?:once|base|type)|drum.*clean.*log|time.*sync|battery.*resolution|(?:power|consumption).*(?:unit|date)|rawvalue)/',
             (string) $identity
         ) === 1;
     }
 
+    /**
+     * Identifie le rôle d'une information d'entretien.
+     *
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $name Nom visible de la commande.
+     * @return string Rôle reconnu, ou chaîne vide.
+     */
     public static function maintenanceRole($entityKey, $name = '')
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
@@ -330,6 +415,13 @@ class LocalThingsWidget
         return '';
     }
 
+    /**
+     * Identifie la mesure énergétique portée par une commande.
+     *
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $name Nom visible de la commande.
+     * @return string Rôle énergétique reconnu, ou chaîne vide.
+     */
     public static function energyRole($entityKey, $name = '')
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
@@ -348,6 +440,16 @@ class LocalThingsWidget
         return '';
     }
 
+    /**
+     * Retourne le libellé et l'icône adaptés à une commande du widget.
+     *
+     * @param string $deviceType Type d'appareil.
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $commandType Type Jeedom de la commande.
+     * @param string $group Page du widget.
+     * @param string $name Nom visible de la commande.
+     * @return array{label:string,icon:string,asset:string}
+     */
     public static function presentation($deviceType, $entityKey, $commandType, $group, $name = '')
     {
         $deviceType = self::profile($deviceType)['type'];
@@ -437,6 +539,7 @@ class LocalThingsWidget
             'humidity' => array('label' => __('Humidité', __FILE__), 'icon' => 'fas fa-tint', 'asset' => ''),
             'quality' => array('label' => __('Qualité de l’air', __FILE__), 'icon' => 'fas fa-wind', 'asset' => ''),
             'level' => array('label' => __('Niveau', __FILE__), 'icon' => 'fas fa-water', 'asset' => ''),
+            'battery' => array('label' => __('Batterie', __FILE__), 'icon' => 'fas fa-battery-half', 'asset' => ''),
         );
         if ($group === 'status' && isset($statusPresentations[$statusSlot])) {
             return $statusPresentations[$statusSlot];
@@ -478,6 +581,7 @@ class LocalThingsWidget
                 'softener_alert' => array('label' => __('Alerte d’adoucissant', __FILE__), 'icon' => 'fas fa-bell', 'asset' => ''),
                 'alert' => array('label' => __('Alerte', __FILE__), 'icon' => 'fas fa-exclamation-triangle', 'asset' => ''),
                 'tank' => array('label' => __('Réservoir', __FILE__), 'icon' => 'fas fa-water', 'asset' => ''),
+                'battery' => array('label' => __('Batterie', __FILE__), 'icon' => 'fas fa-battery-half', 'asset' => ''),
             );
             $detailRole = self::detailRole($entityKey, $name);
             if (isset($detailPresentations[$detailRole])) {
@@ -505,10 +609,17 @@ class LocalThingsWidget
     /**
      * Returns a stable slot used to keep only one useful value of each kind
      * on the main page. Other values remain available on the information page.
+     *
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $name Nom visible de la commande.
+     * @return string Emplacement reconnu, ou chaîne vide.
      */
     public static function statusSlot($entityKey, $name = '')
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
+        if (strpos($identity, 'airqualitystandard') !== false) {
+            return '';
+        }
         if (preg_match('/(?:remainingtime|remaining[ _-]time|temps restant|completiontime)/', $identity)) {
             return 'remaining';
         }
@@ -527,11 +638,14 @@ class LocalThingsWidget
         if (preg_match('/(?:temperature_current|current.*temperature|roomtemperature|température actuelle)/', $identity)) {
             return 'temperature';
         }
-        if (preg_match('/(?:humidity_current|current.*humidity|humidité actuelle)/', $identity)) {
+        if (preg_match('/(?:humidity_current|current.*humidity|humidity_vs_\d+_humidity|humidité actuelle)/', $identity)) {
             return 'humidity';
         }
-        if (preg_match('/(?:airquality|air[ _-]quality|pm1|pm2|pm10|dustlevel)/', $identity)) {
+        if (preg_match('/(?:airquality|air[ _-]quality|pm1|pm2|pm10|dustlevel|cleanlevel)/', $identity)) {
             return 'quality';
+        }
+        if (preg_match('/(?:energy_battery_vs_\d+_battery_|\bbatterie\b)/', $identity)) {
+            return 'battery';
         }
         if (preg_match('/(?:water.*level|tank.*level|niveau.*(?:eau|réservoir))/', $identity)) {
             return 'level';
@@ -539,6 +653,14 @@ class LocalThingsWidget
         return '';
     }
 
+    /**
+     * Calcule l'ordre d'affichage d'un état principal.
+     *
+     * @param string $deviceType Type d'appareil.
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $name Nom visible de la commande.
+     * @return int Priorité croissante.
+     */
     public static function statusPriority($deviceType, $entityKey, $name = '')
     {
         $slot = self::statusSlot($entityKey, $name);
@@ -554,6 +676,7 @@ class LocalThingsWidget
             'humidity' => 60,
             'quality' => 70,
             'level' => 80,
+            'battery' => 90,
         );
         if ($deviceType === 'refrigerator') {
             $priorities['temperature'] = 10;
@@ -565,10 +688,11 @@ class LocalThingsWidget
             $priorities['humidity'] = 20;
             $priorities['power'] = 30;
             $priorities['state'] = 40;
-        } elseif ($deviceType === 'air_purifier') {
+        } elseif (in_array($deviceType, array('air_purifier', 'air_monitor'), true)) {
             $priorities['quality'] = 10;
             $priorities['humidity'] = 20;
-            $priorities['power'] = 30;
+            $priorities['battery'] = 30;
+            $priorities['power'] = 35;
             $priorities['state'] = 40;
         }
         $priority = $priorities[$slot] ?? 100;
@@ -580,16 +704,29 @@ class LocalThingsWidget
         return $priority;
     }
 
+    /**
+     * Liste les familles d'appareils disposant d'un profil dédié.
+     *
+     * @return string[]
+     */
     public static function supportedTypes()
     {
         return array(
             'washer', 'dryer', 'dishwasher', 'air_dresser', 'refrigerator',
-            'airconditioner', 'air_purifier', 'dehumidifier', 'water_purifier',
-            'oven', 'range', 'microwave', 'cooktop', 'induction_cooktop',
+            'airconditioner', 'air_purifier', 'air_monitor', 'dehumidifier', 'water_purifier', 'ehs',
+            'oven', 'range', 'microwave', 'cooktop', 'gas_cooktop', 'induction_cooktop',
             'range_hood', 'vacuum_station',
         );
     }
 
+    /**
+     * Calcule l'ordre général d'une commande dans sa page.
+     *
+     * @param string $deviceType Type d'appareil.
+     * @param string $entityKey Clé sémantique de l'entité.
+     * @param string $name Nom visible de la commande.
+     * @return int Priorité croissante.
+     */
     public static function priority($deviceType, $entityKey, $name = '')
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
@@ -620,6 +757,13 @@ class LocalThingsWidget
         return self::containsAny($identity, $profile['features']) ? 60 : 100;
     }
 
+    /**
+     * Recherche au moins un motif textuel dans une identité normalisée.
+     *
+     * @param string $identity Texte à analyser.
+     * @param string[] $patterns Motifs recherchés.
+     * @return bool
+     */
     private static function containsAny($identity, $patterns)
     {
         foreach ((array) $patterns as $pattern) {

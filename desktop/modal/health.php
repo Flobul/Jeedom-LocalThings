@@ -3,6 +3,12 @@ if (!isConnect('admin')) {
     throw new Exception(__('401 - Accès non autorisé', __FILE__));
 }
 
+/**
+ * Échappe une valeur avant son insertion dans le tableau de santé.
+ *
+ * @param mixed $value Valeur à afficher.
+ * @return string
+ */
 function localthingsHealthEscape($value)
 {
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');

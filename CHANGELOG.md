@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.7
+
+- Ajout d’une PHPDoc complète sur les classes, méthodes et fonctions PHP afin
+  d’expliciter les contrats internes, les formats échangés et les effets de bord.
+- Allègement du rafraîchissement courant : les ressources OCF d’identité ne
+  sont plus relues à chaque passage et restent réservées à la découverte.
+- Validation prioritaire du certificat TLS de la passerelle Samsung, avec
+  repli journalisé sans validation pour les installations incompatibles.
+- Verrouillage du bundle communautaire sur une révision et une empreinte
+  SHA-256 connues, et validation des feuilles clientes contre l’autorité active.
+- Validation du mappeur sur les 81 fixtures publiques du projet LocalThings,
+  avec prise en charge des familles Air Monitor, EHS et table de cuisson gaz.
+- Extraction lisible des mesures PM10, PM2,5, PM1, CO₂ et qualité de l’air
+  contenues dans les tableaux de capteurs Samsung.
+- Ajout des commandes connues des pompes à chaleur EHS : consignes de
+  température, eau chaude sanitaire, modes, absence et mise en sourdine.
+- Amélioration des libellés des commandes EHS et du mode Ne pas déranger des
+  analyseurs d’air afin de conserver une présentation compréhensible.
+- Contrôles Santé étendus à PHP CLI, cURL, OpenSSL, `proc_open` et `exec`.
+- Ajout d’une validation GitHub PHP, JSON, Bash, cohérence de version et
+  absence de fichiers système indésirables dans les livraisons.
+
 ## 0.4.6
 
 - Séparation du rafraîchissement automatique en deux intervalles : un pour

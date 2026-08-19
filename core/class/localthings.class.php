@@ -15,16 +15,29 @@ require_once __DIR__ . '/LocalThingsMapper.php';
 require_once __DIR__ . '/LocalThingsWidget.php';
 require_once __DIR__ . '/LocalThingsClient.php';
 
+/**
+ * Représente un équipement LocalThings et son intégration au cycle de vie Jeedom.
+ */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.6';
+    public static $_pluginVersion = '0.4.7';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
+    /**
+     * Retourne le répertoire des ressources distribuées avec le plugin.
+     *
+     * @return string
+     */
     private static function resourcePath()
     {
         return realpath(__DIR__ . '/../../resources');
     }
 
+    /**
+     * Retourne le répertoire persistant privé du plugin en le créant au besoin.
+     *
+     * @return string
+     */
     private static function dataPath()
     {
         $path = realpath(__DIR__ . '/../..') . '/data';
@@ -35,6 +48,11 @@ class localthings extends eqLogic
         return $path;
     }
 
+    /**
+     * Retourne le fichier temporaire partagé avec la découverte asynchrone.
+     *
+     * @return string
+     */
     private static function statusPath()
     {
         $directory = jeedom::getTmpFolder(__CLASS__);
@@ -44,6 +62,11 @@ class localthings extends eqLogic
         return $directory . '/discovery-status.json';
     }
 
+    /**
+     * Charge et valide les sous-réseaux configurés pour la découverte.
+     *
+     * @return string[] Réseaux IPv4 au format CIDR.
+     */
     private static function configuredNetworks()
     {
         $raw = (string) config::byKey('discovery_networks', __CLASS__, '');
@@ -59,11 +82,26 @@ class localthings extends eqLogic
         return LocalThingsDiscovery::validateNetworks(array_values(array_unique($networks)));
     }
 
+    /**
+     * Construit le magasin de certificats du plugin.
+     *
+     * @return LocalThingsCertificateStore
+     */
     public static function certificateStore()
     {
-        return new LocalThingsCertificateStore(self::dataPath());
+        return new LocalThingsCertificateStore(
+            self::dataPath(),
+            function ($level, $message) {
+                log::add(__CLASS__, $level, $message);
+            }
+        );
     }
 
+    /**
+     * Construit un client LocalThings prêt à journaliser dans Jeedom.
+     *
+     * @return LocalThingsDeviceClient
+     */
     public static function deviceClient()
     {
         $openssl = LocalThingsDeviceClient::findOpenSsl();
@@ -81,6 +119,11 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Retourne l'état des dépendances au format attendu par Jeedom.
+     *
+     * @return array<string,mixed>
+     */
     public static function dependancy_info()
     {
         $openssl = LocalThingsDeviceClient::findOpenSsl();
@@ -92,6 +135,11 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Prépare la commande d'installation des dépendances Jeedom.
+     *
+     * @return array<string,string>
+     */
     public static function dependancy_install()
     {
         log::remove(__CLASS__ . '_update');
@@ -102,18 +150,16 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Démarre une découverte sur les sous-réseaux configurés.
+     *
+     * @return array<string,mixed> État initial de la tâche.
+     */
     public static function synchronize()
     {
         self::assertCertificates();
         $networks = self::configuredNetworks();
-        log::add(
-            __CLASS__,
-            'info',
-            sprintf(
-                __('[Discovery] Découverte réseau demandée : %s', __FILE__),
-                implode(', ', $networks)
-            )
-        );
+        log::add(__CLASS__, 'info', sprintf(__('[Discovery] Découverte réseau demandée : %s', __FILE__), implode(', ', $networks)));
         $status = LocalThingsDiscovery::start(
             self::statusPath(),
             self::resourcePath() . '/discover.php',
@@ -121,28 +167,20 @@ class localthings extends eqLogic
             array(),
             log::getPathToLog(__CLASS__)
         );
-        log::add(
-            __CLASS__,
-            'info',
-            sprintf(
-                __('[Discovery] Tâche PHP lancée, PID=%d', __FILE__),
-                (int) ($status['worker_pid'] ?? 0)
-            )
-        );
+        log::add(__CLASS__, 'info', sprintf(__('[Discovery] Tâche PHP lancée, PID=%d', __FILE__), (int) ($status['worker_pid'] ?? 0)));
         return $status;
     }
 
+    /**
+     * Démarre une découverte exhaustive sur une adresse précise.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @return array<string,mixed> État initial de la tâche.
+     */
     public static function probeHost($host)
     {
         self::assertCertificates();
-        log::add(
-            __CLASS__,
-            'info',
-            sprintf(
-                __('[Discovery] Ajout manuel demandé pour %s', __FILE__),
-                trim((string) $host)
-            )
-        );
+        log::add(__CLASS__, 'info', sprintf(__('[Discovery] Ajout manuel demandé pour %s', __FILE__), trim((string) $host)));
         $status = LocalThingsDiscovery::start(
             self::statusPath(),
             self::resourcePath() . '/discover.php',
@@ -150,48 +188,82 @@ class localthings extends eqLogic
             array((string) $host),
             log::getPathToLog(__CLASS__)
         );
-        log::add(
-            __CLASS__,
-            'info',
-            sprintf(
-                __('[Discovery] Tâche PHP manuelle lancée, PID=%d', __FILE__),
-                (int) ($status['worker_pid'] ?? 0)
-            )
-        );
+        log::add(__CLASS__, 'info', sprintf(__('[Discovery] Tâche PHP manuelle lancée, PID=%d', __FILE__), (int) ($status['worker_pid'] ?? 0)));
         return $status;
     }
 
+    /**
+     * Lit l'état courant de la découverte.
+     *
+     * @return array<string,mixed>
+     */
     public static function scanStatus()
     {
         return LocalThingsDiscovery::readStatus(self::statusPath());
     }
 
+    /**
+     * Diagnostique les prérequis du transport DTLS.
+     *
+     * @return array<string,mixed>
+     */
     public static function transportStatus()
     {
         $openssl = LocalThingsDeviceClient::findOpenSsl();
+        $phpOpenSsl = function_exists('openssl_x509_read')
+            && function_exists('openssl_pkey_new')
+            && function_exists('openssl_x509_verify');
         return array(
-            'ok' => $openssl !== '' && LocalThingsDeviceClient::supportsDtls($openssl),
+            'ok' => $openssl !== ''
+                && LocalThingsDeviceClient::supportsDtls($openssl)
+                && $phpOpenSsl,
             'path' => $openssl,
             'php' => PHP_VERSION,
             'proc_open' => function_exists('proc_open'),
+            'exec' => function_exists('exec'),
+            'curl' => function_exists('curl_init'),
+            'openssl_extension' => $phpOpenSsl,
+            'php_cli' => LocalThingsDiscovery::findPhpCli(),
         );
     }
 
+    /**
+     * Retourne l'état du magasin de certificats.
+     *
+     * @return array<string,mixed>
+     */
     public static function certificateStatus()
     {
         return self::certificateStore()->status();
     }
 
+    /**
+     * Télécharge et installe le bundle communautaire de certificats.
+     *
+     * @return array<string,mixed>
+     */
     public static function bootstrapCertificates()
     {
         return self::certificateStore()->bootstrap();
     }
 
+    /**
+     * Installe les certificats fournis depuis la configuration Jeedom.
+     *
+     * @param string $certificate Chaîne de certificats PEM.
+     * @param string $privateKey Clé privée PEM.
+     * @return array<string,mixed>
+     */
     public static function installCertificates($certificate, $privateKey)
     {
         return self::certificateStore()->install($certificate, $privateKey);
     }
 
+    /**
+     * Interrompt l'opération lorsque les certificats ne sont pas configurés.
+     *
+     * @return void
+     */
     private static function assertCertificates()
     {
         if (!self::certificateStore()->isConfigured()) {
@@ -199,6 +271,12 @@ class localthings extends eqLogic
         }
     }
 
+    /**
+     * Crée ou actualise un équipement Jeedom depuis un instantané LocalThings.
+     *
+     * @param array<string,mixed> $snapshot Appareil, entités et états découverts.
+     * @return array<string,mixed> Résumé de l'équipement enregistré.
+     */
     public static function registerSnapshot($snapshot)
     {
         if (!is_array($snapshot) || !isset($snapshot['device']) || !is_array($snapshot['device'])) {
@@ -255,6 +333,12 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Recherche un équipement par identifiant physique stable.
+     *
+     * @param string $deviceId Identifiant LocalThings.
+     * @return localthings|null
+     */
     private static function byDeviceId($deviceId)
     {
         foreach (self::byType(__CLASS__) as $eqLogic) {
@@ -265,6 +349,13 @@ class localthings extends eqLogic
         return null;
     }
 
+    /**
+     * Recherche un équipement existant par adresse et port.
+     *
+     * @param string $host Adresse IPv4.
+     * @param int $port Port DTLS.
+     * @return localthings|null
+     */
     private static function byEndpoint($host, $port)
     {
         if ($host === '' || $port === 0) {
@@ -281,6 +372,12 @@ class localthings extends eqLogic
         return null;
     }
 
+    /**
+     * Crée la commande d'état de connexion si elle est absente.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @return void
+     */
     private static function ensureConnectedCommand($eqLogic)
     {
         $command = $eqLogic->getCmd('info', 'connected');
@@ -299,6 +396,12 @@ class localthings extends eqLogic
         }
     }
 
+    /**
+     * Crée ou normalise la commande de rafraîchissement native.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @return void
+     */
     private static function ensureRefreshCommand($eqLogic)
     {
         $command = $eqLogic->getCmd('action', 'refresh');
@@ -323,6 +426,13 @@ class localthings extends eqLogic
         $command->save();
     }
 
+    /**
+     * Génère un identifiant logique court et stable pour une commande.
+     *
+     * @param string $prefix Préfixe `info` ou `action`.
+     * @param string $key Clé sémantique complète.
+     * @return string
+     */
     private static function commandLogicalId($prefix, $key)
     {
         $clean = preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) $key);
@@ -330,6 +440,12 @@ class localthings extends eqLogic
         return $prefix . '_' . substr($clean, 0, 80) . '_' . substr(sha1((string) $key), 0, 8);
     }
 
+    /**
+     * Normalise un nom de commande pour les comparaisons d'unicité.
+     *
+     * @param string $name Nom visible.
+     * @return string
+     */
     private static function commandNameKey($name)
     {
         $name = preg_replace('/\s+/u', ' ', trim((string) $name));
@@ -338,6 +454,12 @@ class localthings extends eqLogic
             : strtolower($name);
     }
 
+    /**
+     * Indexe les noms déjà réservés sur un équipement.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @return array<string,string> Nom normalisé vers identifiant logique.
+     */
     private static function commandNameRegistry($eqLogic)
     {
         $registry = array();
@@ -352,6 +474,13 @@ class localthings extends eqLogic
         return $registry;
     }
 
+    /**
+     * Libère le nom courant d'une commande avant son renommage.
+     *
+     * @param array<string,string> $registry Registre modifié par référence.
+     * @param cmd|null $command Commande concernée.
+     * @return void
+     */
     private static function releaseCommandName(&$registry, $command)
     {
         if (!is_object($command)) {
@@ -364,6 +493,14 @@ class localthings extends eqLogic
         }
     }
 
+    /**
+     * Réserve un nom unique en ajoutant un suffixe lisible si nécessaire.
+     *
+     * @param array<string,string> $registry Registre modifié par référence.
+     * @param string $preferredName Nom souhaité.
+     * @param string $logicalId Identifiant logique propriétaire.
+     * @return string Nom réellement réservé.
+     */
     private static function reserveCommandName(&$registry, $preferredName, $logicalId)
     {
         $base = preg_replace('/\s+/u', ' ', trim((string) $preferredName));
@@ -382,6 +519,13 @@ class localthings extends eqLogic
         return $name;
     }
 
+    /**
+     * Synchronise les commandes Jeedom gérées avec les entités du mappeur.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @param array<int,array<string,mixed>> $entities Entités mappées.
+     * @return void
+     */
     private static function syncCommands($eqLogic, $entities)
     {
         $nameRegistry = self::commandNameRegistry($eqLogic);
@@ -517,6 +661,15 @@ class localthings extends eqLogic
         // erase a working equipment schema.
     }
 
+    /**
+     * Produit un nom d'action concis à partir de son information cible.
+     *
+     * @param string $entityKey Clé de l'entité cible.
+     * @param string $infoName Nom de l'information.
+     * @param array<string,mixed> $action Métadonnées de l'action.
+     * @param string $subtype Sous-type Jeedom.
+     * @return string
+     */
     private static function generatedActionName($entityKey, $infoName, $action, $subtype)
     {
         $actionName = (string) ($action['name'] ?? $action['key'] ?? __('Action', __FILE__));
@@ -533,6 +686,13 @@ class localthings extends eqLogic
         return $infoName . ' - ' . $actionName;
     }
 
+    /**
+     * Supprime les anciennes commandes remplacées par une ressource canonique.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @param array<string,bool> $processedEntityKeys Entités reçues au dernier mapping.
+     * @return void
+     */
     private static function removeDeprecatedGeneratedCommands($eqLogic, $processedEntityKeys)
     {
         $rules = array(
@@ -569,6 +729,14 @@ class localthings extends eqLogic
         }
     }
 
+    /**
+     * Publie les nouveaux états via le mécanisme natif de Jeedom.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @param array<string,mixed> $states États indexés par clé d'entité.
+     * @param bool $connected État de la communication.
+     * @return void
+     */
     private static function applyStates($eqLogic, $states, $connected)
     {
         $commands = array();
@@ -593,6 +761,12 @@ class localthings extends eqLogic
         $eqLogic->checkAndUpdateCmd('connected', $connected ? 1 : 0);
     }
 
+    /**
+     * Convertit une valeur de configuration en secondes et la borne.
+     *
+     * @param mixed $value Intervalle en minutes ou suffixé par `s`.
+     * @return int
+     */
     public static function pollIntervalSeconds($value = null)
     {
         if ($value === null) {
@@ -606,6 +780,12 @@ class localthings extends eqLogic
         return max(1, min(1440, (int) $value)) * 60;
     }
 
+    /**
+     * Retourne l'intervalle applicable selon la dernière connectivité connue.
+     *
+     * @param bool $online Vrai pour la cadence en ligne.
+     * @return int Nombre de secondes.
+     */
     public static function pollIntervalSecondsForState($online)
     {
         $legacy = config::byKey('poll_interval', __CLASS__, 5);
@@ -618,12 +798,24 @@ class localthings extends eqLogic
         return self::pollIntervalSeconds($value);
     }
 
+    /**
+     * Lit la commande de connexion d'un équipement.
+     *
+     * @param localthings $eqLogic Équipement concerné.
+     * @return bool
+     */
     private static function equipmentIsOnline($eqLogic)
     {
         $connected = $eqLogic->getCmd('info', 'connected');
         return is_object($connected) && (int) $connected->execCmd() === 1;
     }
 
+    /**
+     * Formate un intervalle de rafraîchissement pour la page Santé.
+     *
+     * @param int $seconds Durée en secondes.
+     * @return string
+     */
     private static function pollIntervalLabel($seconds)
     {
         $seconds = max(1, (int) $seconds);
@@ -639,6 +831,11 @@ class localthings extends eqLogic
         return ($seconds / 60) . ' min';
     }
 
+    /**
+     * Rafraîchit les équipements dont l'intervalle courant est écoulé.
+     *
+     * @return void
+     */
     public static function poll()
     {
         $now = time();
@@ -652,15 +849,16 @@ class localthings extends eqLogic
             try {
                 $eqLogic->refresh();
             } catch (Exception $exception) {
-                log::add(
-                    __CLASS__,
-                    'warning',
-                    $eqLogic->getHumanName() . ' : ' . $exception->getMessage()
-                );
+                log::add(__CLASS__,'warning',$eqLogic->getHumanName() . ' : ' . $exception->getMessage());
             }
         }
     }
 
+    /**
+     * Assure un rafraîchissement de secours lorsque le démon est arrêté.
+     *
+     * @return void
+     */
     public static function cron()
     {
         $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
@@ -670,6 +868,11 @@ class localthings extends eqLogic
         self::poll();
     }
 
+    /**
+     * Retourne l'état du démon au format attendu par Jeedom.
+     *
+     * @return array<string,string>
+     */
     public static function deamon_info()
     {
         $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
@@ -683,6 +886,11 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Démarre la tâche Jeedom persistante de rafraîchissement.
+     *
+     * @return void
+     */
     public static function deamon_start()
     {
         self::deamon_stop();
@@ -693,6 +901,11 @@ class localthings extends eqLogic
         $pollCron->run();
     }
 
+    /**
+     * Arrête la tâche Jeedom persistante de rafraîchissement.
+     *
+     * @return void
+     */
     public static function deamon_stop()
     {
         $pollCron = cron::byClassAndFunction(__CLASS__, 'poll');
@@ -701,6 +914,11 @@ class localthings extends eqLogic
         }
     }
 
+    /**
+     * Construit les contrôles synthétiques affichés par la page Santé.
+     *
+     * @return array<int,array<string,mixed>>
+     */
     public static function health()
     {
         $dependency = self::dependancy_info();
@@ -739,10 +957,27 @@ class localthings extends eqLogic
                 'state' => $dependency['state'] === 'ok',
             ),
             array(
-                'test' => __('Fonction PHP proc_open', __FILE__),
-                'result' => !empty($transport['proc_open']) ? 'OK' : 'NOK',
-                'advice' => !empty($transport['proc_open']) ? '' : __('Activez proc_open dans PHP', __FILE__),
-                'state' => !empty($transport['proc_open']),
+                'test' => __('Fonctions PHP requises', __FILE__),
+                'result' => 'OpenSSL : ' . (!empty($transport['openssl_extension']) ? 'OK' : 'NOK')
+                    . ' / proc_open : ' . (!empty($transport['proc_open']) ? 'OK' : 'NOK')
+                    . ' / exec : ' . (!empty($transport['exec']) ? 'OK' : 'NOK')
+                    . ' / cURL : ' . (!empty($transport['curl']) ? 'OK' : 'NOK'),
+                'advice' => !empty($transport['openssl_extension'])
+                    && !empty($transport['proc_open'])
+                    && !empty($transport['exec'])
+                    && !empty($transport['curl'])
+                    ? ''
+                    : __('Activez les extensions et fonctions PHP indiquées', __FILE__),
+                'state' => !empty($transport['openssl_extension'])
+                    && !empty($transport['proc_open'])
+                    && !empty($transport['exec'])
+                    && !empty($transport['curl']),
+            ),
+            array(
+                'test' => __('Interpréteur PHP CLI', __FILE__),
+                'result' => !empty($transport['php_cli']) ? $transport['php_cli'] : 'NOK',
+                'advice' => !empty($transport['php_cli']) ? '' : __('Installez PHP CLI', __FILE__),
+                'state' => !empty($transport['php_cli']),
             ),
             array(
                 'test' => __('Certificats DTLS', __FILE__),
@@ -771,6 +1006,28 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Retourne les métadonnées stables réutilisées lors des lectures légères.
+     *
+     * @return array<string,mixed>
+     */
+    private function knownDeviceContext()
+    {
+        return array(
+            'device_id' => (string) $this->getConfiguration('device_id', ''),
+            'serial' => (string) $this->getConfiguration('serial', ''),
+            'name' => (string) $this->getName(),
+            'manufacturer' => (string) $this->getConfiguration('manufacturer', 'Samsung'),
+            'model' => (string) $this->getConfiguration('model', ''),
+            'device_type' => (string) $this->getConfiguration('device_type', 'unknown'),
+        );
+    }
+
+    /**
+     * Relit l'appareil et enregistre l'instantané obtenu.
+     *
+     * @return array<string,mixed>
+     */
     public function refresh()
     {
         $host = (string) $this->getConfiguration('host');
@@ -779,7 +1036,7 @@ class localthings extends eqLogic
             throw new RuntimeException(__('Adresse LocalThings absente', __FILE__));
         }
         try {
-            $snapshot = self::deviceClient()->refresh($host, $port);
+            $snapshot = self::deviceClient()->refresh($host, $port, $this->knownDeviceContext());
             self::registerSnapshot($snapshot);
             return $snapshot;
         } catch (Exception $exception) {
@@ -791,6 +1048,11 @@ class localthings extends eqLogic
         }
     }
 
+    /**
+     * Teste immédiatement une lecture DTLS sans recréer l'équipement.
+     *
+     * @return array<string,mixed> Résultat et durée du test.
+     */
     public function testCommunication()
     {
         $host = trim((string) $this->getConfiguration('host'));
@@ -800,7 +1062,7 @@ class localthings extends eqLogic
         }
         $started = microtime(true);
         try {
-            $snapshot = self::deviceClient()->refresh($host, $port);
+            $snapshot = self::deviceClient()->refresh($host, $port, $this->knownDeviceContext());
             if (!is_array($snapshot) || empty($snapshot['device'])) {
                 throw new RuntimeException(__('Réponse LocalThings invalide', __FILE__));
             }
@@ -810,15 +1072,7 @@ class localthings extends eqLogic
             $this->setConfiguration('last_communication', $lastCommunication);
             $this->setConfiguration('last_error', '');
             $this->save(true);
-            log::add(
-                __CLASS__,
-                'info',
-                sprintf(
-                    __('[Test] Communication réussie avec %1$s en %2$d ms', __FILE__),
-                    $this->getHumanName(),
-                    $duration
-                )
-            );
+            log::add(__CLASS__, 'info', sprintf( __('[Test] Communication réussie avec %1$s en %2$d ms', __FILE__), $this->getHumanName(), $duration));
             return array(
                 'success' => true,
                 'duration_ms' => $duration,
@@ -831,19 +1085,17 @@ class localthings extends eqLogic
             $this->checkAndUpdateCmd('connected', 0);
             $this->setConfiguration('last_error', $exception->getMessage());
             $this->save(true);
-            log::add(
-                __CLASS__,
-                'warning',
-                sprintf(
-                    __('[Test] Échec de communication avec %1$s : %2$s', __FILE__),
-                    $this->getHumanName(),
-                    $exception->getMessage()
-                )
-            );
+            log::add(__CLASS__, 'warning', sprintf(__('[Test] Échec de communication avec %1$s : %2$s', __FILE__), $this->getHumanName(), $exception->getMessage()));
             throw $exception;
         }
     }
 
+    /**
+     * Applique les commandes et états retournés après une écriture réussie.
+     *
+     * @param mixed $result Résultat du client LocalThings.
+     * @return void
+     */
     public function applyCommandResult($result)
     {
         if (!is_array($result)) {
@@ -1060,6 +1312,15 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Rend une collection de commandes et fusionne les paires On/Off.
+     *
+     * @param cmd[] $commands Commandes à afficher.
+     * @param string $version Version de widget Jeedom.
+     * @param string $group Page du widget.
+     * @param string $deviceType Type d'appareil.
+     * @return string
+     */
     private function renderWidgetCommands($commands, $version, $group, $deviceType)
     {
         $rendered = '';
@@ -1096,6 +1357,13 @@ class localthings extends eqLogic
         return $rendered;
     }
 
+    /**
+     * Conserve une seule information par rôle dans les pages synthétiques.
+     *
+     * @param cmd[] $commands Commandes candidates.
+     * @param string $section Page du widget.
+     * @return cmd[]
+     */
     private function deduplicateWidgetCommands($commands, $section)
     {
         if (!in_array($section, array('maintenance', 'energy', 'details'), true)) {
@@ -1124,6 +1392,15 @@ class localthings extends eqLogic
         return $filtered;
     }
 
+    /**
+     * Rend deux actions booléennes sous forme d'un interrupteur unique.
+     *
+     * @param cmd[] $commands Actions On/Off associées.
+     * @param string $version Version de widget Jeedom.
+     * @param string $group Page du widget.
+     * @param string $deviceType Type d'appareil.
+     * @return string
+     */
     private function renderWidgetToggleCommands($commands, $version, $group, $deviceType)
     {
         if (count($commands) === 0) {
@@ -1187,6 +1464,15 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Rend le widget natif d'une commande dans son cadre LocalThings.
+     *
+     * @param cmd $command Commande Jeedom.
+     * @param string $version Version de widget Jeedom.
+     * @param string $group Page du widget.
+     * @param string $deviceType Type d'appareil.
+     * @return string
+     */
     private function renderWidgetCommand($command, $version, $group, $deviceType)
     {
         $entityKey = (string) $command->getConfiguration('entityKey', '');
@@ -1216,6 +1502,16 @@ class localthings extends eqLogic
         );
     }
 
+    /**
+     * Ajoute la présentation métier autour du HTML natif d'une commande.
+     *
+     * @param cmd $command Commande Jeedom.
+     * @param string $html HTML généré par `cmd::toHtml()`.
+     * @param string $group Page du widget.
+     * @param string $deviceType Type d'appareil.
+     * @param string $subType Sous-type visuel.
+     * @return string
+     */
     private function renderWidgetCommandFrame($command, $html, $group, $deviceType, $subType)
     {
         $subType = preg_replace('/[^a-z0-9_-]/i', '', (string) $subType);
@@ -1296,8 +1592,17 @@ class localthings extends eqLogic
     }
 }
 
+/**
+ * Exécute les actions LocalThings générées depuis les recettes du mappeur.
+ */
 class localthingsCmd extends cmd
 {
+    /**
+     * Traduit les options Jeedom, envoie l'écriture puis applique son résultat.
+     *
+     * @param array<string,mixed> $_options Valeurs transmises par le widget ou le scénario.
+     * @return array<string,mixed>|null
+     */
     public function execute($_options = array())
     {
         if ($this->getType() !== 'action') {

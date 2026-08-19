@@ -1,9 +1,13 @@
 <?php
 
+/**
+ * Stocke l'autorité LocalThings et génère les certificats clients par appareil.
+ */
 class LocalThingsCertificateStore
 {
     private const SAMSUNG_CLOUD_HOST = 'connect-v2.samsungiotcloud.com';
-    private const DEFAULT_BUNDLE_URL = 'https://raw.githubusercontent.com/brayStorm/samsung-appliance-token/main/cert.pem';
+    private const DEFAULT_BUNDLE_URL = 'https://raw.githubusercontent.com/brayStorm/samsung-appliance-token/72c2a947363c6b50dee3e071a7b87a5784b7dc0c/cert.pem';
+    private const DEFAULT_BUNDLE_SHA256 = 'eaf6f4cd10e79d8dae437ad9db31a839e5ecacd84f5fb3d220f73954d06aa67d';
     private const MAX_BUNDLE_SIZE = 524288;
 
     private $root;
@@ -12,8 +16,16 @@ class LocalThingsCertificateStore
     private $caCertificatePath;
     private $caKeyPath;
     private $uuidPath;
+    private $logger;
 
-    public function __construct($dataDirectory)
+    /**
+     * Initialise l'arborescence privée des certificats.
+     *
+     * @param string $dataDirectory Répertoire persistant du plugin.
+     * @param callable|null $logger Journaliseur facultatif.
+     * @throws InvalidArgumentException Lorsque le chemin est vide.
+     */
+    public function __construct($dataDirectory, $logger = null)
     {
         $this->root = rtrim((string) $dataDirectory, '/');
         if ($this->root === '') {
@@ -24,11 +36,17 @@ class LocalThingsCertificateStore
         $this->caCertificatePath = $this->certificateDirectory . '/ca-chain.pem';
         $this->caKeyPath = $this->certificateDirectory . '/ca.key';
         $this->uuidPath = $this->certificateDirectory . '/samsung-cloud.uuid';
+        $this->logger = is_callable($logger) ? $logger : null;
         $this->ensureDirectory($this->root);
         $this->ensureDirectory($this->certificateDirectory);
         $this->ensureDirectory($this->deviceDirectory);
     }
 
+    /**
+     * Vérifie la présence et la cohérence de l'autorité de certification.
+     *
+     * @return bool
+     */
     public function isConfigured()
     {
         if (!is_file($this->caCertificatePath) || !is_file($this->caKeyPath)) {
@@ -45,6 +63,11 @@ class LocalThingsCertificateStore
         }
     }
 
+    /**
+     * Retourne les informations publiques de l'autorité installée.
+     *
+     * @return array<string,mixed>
+     */
     public function status()
     {
         $result = array(
@@ -86,6 +109,13 @@ class LocalThingsCertificateStore
         return $result;
     }
 
+    /**
+     * Valide puis installe atomiquement une chaîne et sa clé privée RSA.
+     *
+     * @param string $certificatePem Chaîne de certificats PEM.
+     * @param string $privateKeyPem Clé privée PEM.
+     * @return array<string,mixed> Nouvel état du magasin.
+     */
     public function install($certificatePem, $privateKeyPem)
     {
         $certificatePem = (string) $certificatePem;
@@ -123,6 +153,12 @@ class LocalThingsCertificateStore
         return $this->status();
     }
 
+    /**
+     * Installe un bundle PEM contenant certificats et clé privée.
+     *
+     * @param string $bundle Bundle PEM complet.
+     * @return array<string,mixed> Nouvel état du magasin.
+     */
     public function installBundle($bundle)
     {
         $bundle = (string) $bundle;
@@ -137,6 +173,12 @@ class LocalThingsCertificateStore
         return $this->install(implode("\n", $certificates), $keys[0]);
     }
 
+    /**
+     * Télécharge puis installe le bundle communautaire de certificats.
+     *
+     * @param string $sourceUrl URL HTTPS du bundle.
+     * @return array<string,mixed> Nouvel état du magasin.
+     */
     public function bootstrap($sourceUrl = self::DEFAULT_BUNDLE_URL)
     {
         $sourceUrl = trim((string) $sourceUrl);
@@ -167,7 +209,7 @@ class LocalThingsCertificateStore
         $success = curl_exec($curl);
         $status = (int) curl_getinfo($curl, CURLINFO_HTTP_CODE);
         $error = curl_error($curl);
-        curl_close($curl);
+        unset($curl);
         if ($success !== true || $status !== 200) {
             throw new RuntimeException(
                 __('Téléchargement du bundle impossible', __FILE__)
@@ -175,9 +217,20 @@ class LocalThingsCertificateStore
                 . ($error !== '' ? ' : ' . $error : '')
             );
         }
+        if (
+            $sourceUrl === self::DEFAULT_BUNDLE_URL
+            && !hash_equals(self::DEFAULT_BUNDLE_SHA256, hash('sha256', $buffer))
+        ) {
+            throw new RuntimeException(__('L’empreinte du bundle communautaire est invalide', __FILE__));
+        }
         return $this->installBundle($buffer);
     }
 
+    /**
+     * Obtient l'UUID attendu dans les certificats clients Samsung.
+     *
+     * @return string UUID Samsung normalisé.
+     */
     public function samsungUuid()
     {
         if (is_file($this->uuidPath)) {
@@ -186,41 +239,15 @@ class LocalThingsCertificateStore
                 return strtolower($cached);
             }
         }
-        $context = stream_context_create(array(
-            'ssl' => array(
-                'capture_peer_cert' => true,
-                'capture_peer_cert_chain' => true,
-                'verify_peer' => false,
-                'verify_peer_name' => false,
-                'SNI_enabled' => true,
-                'peer_name' => self::SAMSUNG_CLOUD_HOST,
-            ),
-        ));
-        $errno = 0;
-        $error = '';
-        $stream = @stream_socket_client(
-            'ssl://' . self::SAMSUNG_CLOUD_HOST . ':443',
-            $errno,
-            $error,
-            15,
-            STREAM_CLIENT_CONNECT,
-            $context
-        );
-        if (!is_resource($stream)) {
-            throw new RuntimeException(__('Lecture du certificat Samsung impossible : ', __FILE__) . $error);
-        }
-        $parameters = stream_context_get_params($stream);
-        fclose($stream);
-        $sslOptions = $parameters['options']['ssl'] ?? array();
-        $certificates = array();
-        if (isset($sslOptions['peer_certificate'])) {
-            $certificates[] = $sslOptions['peer_certificate'];
-        }
-        foreach (($sslOptions['peer_certificate_chain'] ?? array()) as $certificate) {
-            $certificates[] = $certificate;
-        }
-        if (count($certificates) === 0) {
-            throw new RuntimeException(__('Certificat Samsung distant absent', __FILE__));
+        try {
+            $certificates = $this->samsungPeerCertificates(true);
+        } catch (Exception $exception) {
+            $this->log(
+                'warning',
+                __('La validation TLS du certificat Samsung a échoué ; nouvelle tentative en mode compatible sans validation : ', __FILE__)
+                . $exception->getMessage()
+            );
+            $certificates = $this->samsungPeerCertificates(false);
         }
 
         $subjects = array();
@@ -250,6 +277,70 @@ class LocalThingsCertificateStore
         throw new RuntimeException($message);
     }
 
+    /**
+     * Lit la chaîne de certificats présentée par la passerelle Samsung.
+     *
+     * @param bool $verifyPeer Active la validation de la chaîne et du nom TLS.
+     * @return array<int,mixed> Ressources de certificats OpenSSL.
+     */
+    private function samsungPeerCertificates($verifyPeer)
+    {
+        $context = stream_context_create(array(
+            'ssl' => array(
+                'capture_peer_cert' => true,
+                'capture_peer_cert_chain' => true,
+                'verify_peer' => (bool) $verifyPeer,
+                'verify_peer_name' => (bool) $verifyPeer,
+                'allow_self_signed' => false,
+                'SNI_enabled' => true,
+                'peer_name' => self::SAMSUNG_CLOUD_HOST,
+            ),
+        ));
+        $errno = 0;
+        $error = '';
+        if (function_exists('error_clear_last')) {
+            error_clear_last();
+        }
+        $stream = @stream_socket_client(
+            'ssl://' . self::SAMSUNG_CLOUD_HOST . ':443',
+            $errno,
+            $error,
+            15,
+            STREAM_CLIENT_CONNECT,
+            $context
+        );
+        if (!is_resource($stream)) {
+            $lastError = error_get_last();
+            if ($error === '' && is_array($lastError) && !empty($lastError['message'])) {
+                $error = (string) $lastError['message'];
+            }
+            throw new RuntimeException(
+                __('Lecture du certificat Samsung impossible', __FILE__)
+                . ($error !== '' ? ' : ' . $error : '')
+            );
+        }
+        $parameters = stream_context_get_params($stream);
+        fclose($stream);
+        $sslOptions = $parameters['options']['ssl'] ?? array();
+        $certificates = array();
+        if (isset($sslOptions['peer_certificate'])) {
+            $certificates[] = $sslOptions['peer_certificate'];
+        }
+        foreach (($sslOptions['peer_certificate_chain'] ?? array()) as $certificate) {
+            $certificates[] = $certificate;
+        }
+        if (count($certificates) === 0) {
+            throw new RuntimeException(__('Certificat Samsung distant absent', __FILE__));
+        }
+        return $certificates;
+    }
+
+    /**
+     * Extrait un UUID Samsung d'un certificat déjà analysé par OpenSSL.
+     *
+     * @param array<string,mixed> $parsedCertificate Certificat analysé.
+     * @return string UUID normalisé, ou chaîne vide.
+     */
     public static function extractSamsungUuid(array $parsedCertificate)
     {
         $values = array();
@@ -278,6 +369,12 @@ class LocalThingsCertificateStore
         return '';
     }
 
+    /**
+     * Retourne ou génère un certificat client propre à un appareil.
+     *
+     * @param string $deviceId Identifiant stable de l'appareil.
+     * @return array{0:string,1:string} Chemins du certificat complet et de la clé.
+     */
     public function mintLeaf($deviceId)
     {
         if (!$this->isConfigured()) {
@@ -338,16 +435,33 @@ class LocalThingsCertificateStore
         return array($certificatePath, $keyPath);
     }
 
+    /**
+     * Retourne le chemin de la chaîne de l'autorité installée.
+     *
+     * @return string
+     */
     public function caCertificatePath()
     {
         return $this->caCertificatePath;
     }
 
+    /**
+     * Retourne le répertoire racine du magasin.
+     *
+     * @return string
+     */
     public function dataDirectory()
     {
         return $this->root;
     }
 
+    /**
+     * Vérifie qu'une paire cliente est cohérente et encore valide.
+     *
+     * @param string $certificatePath Chemin du certificat.
+     * @param string $keyPath Chemin de la clé privée.
+     * @return bool
+     */
     private function validLeafPair($certificatePath, $keyPath)
     {
         if (!is_file($certificatePath) || !is_file($keyPath)) {
@@ -359,9 +473,26 @@ class LocalThingsCertificateStore
             return false;
         }
         $parsed = openssl_x509_parse($certificate);
-        return !isset($parsed['validTo_time_t']) || (int) $parsed['validTo_time_t'] > time() + 86400;
+        if (
+            !is_array($parsed)
+            || (isset($parsed['validFrom_time_t']) && (int) $parsed['validFrom_time_t'] > time())
+            || (isset($parsed['validTo_time_t']) && (int) $parsed['validTo_time_t'] <= time() + 86400)
+        ) {
+            return false;
+        }
+        $authority = $this->firstCertificate((string) file_get_contents($this->caCertificatePath));
+        if ($authority === null) {
+            return false;
+        }
+        $authorityKey = openssl_pkey_get_public($authority);
+        return $authorityKey !== false && openssl_x509_verify($certificate, $authorityKey) === 1;
     }
 
+    /**
+     * Supprime les certificats clients dérivés après changement d'autorité.
+     *
+     * @return void
+     */
     private function removeGeneratedLeaves()
     {
         if (!is_dir($this->deviceDirectory)) {
@@ -377,6 +508,12 @@ class LocalThingsCertificateStore
         }
     }
 
+    /**
+     * Extrait les blocs de certificats d'un contenu PEM.
+     *
+     * @param string $value Contenu PEM.
+     * @return string[]
+     */
     private function certificateBlocks($value)
     {
         preg_match_all(
@@ -387,6 +524,12 @@ class LocalThingsCertificateStore
         return $matches[0] ?? array();
     }
 
+    /**
+     * Extrait les blocs de clés privées d'un contenu PEM.
+     *
+     * @param string $value Contenu PEM.
+     * @return string[]
+     */
     private function privateKeyBlocks($value)
     {
         preg_match_all(
@@ -397,6 +540,12 @@ class LocalThingsCertificateStore
         return $matches[0] ?? array();
     }
 
+    /**
+     * Lit le premier certificat d'une chaîne PEM.
+     *
+     * @param string $value Contenu PEM.
+     * @return mixed Certificat OpenSSL ou `null`.
+     */
     private function firstCertificate($value)
     {
         $blocks = $this->certificateBlocks($value);
@@ -407,6 +556,14 @@ class LocalThingsCertificateStore
         return $certificate === false ? null : $certificate;
     }
 
+    /**
+     * Remplace un fichier de manière atomique avec les permissions demandées.
+     *
+     * @param string $path Destination.
+     * @param string $data Contenu binaire.
+     * @param int $mode Permissions Unix.
+     * @return void
+     */
     private function atomicWrite($path, $data, $mode)
     {
         $directory = dirname($path);
@@ -435,6 +592,12 @@ class LocalThingsCertificateStore
         @chmod($path, $mode);
     }
 
+    /**
+     * Crée un répertoire privé s'il n'existe pas.
+     *
+     * @param string $path Chemin à créer.
+     * @return void
+     */
     private function ensureDirectory($path)
     {
         if (!is_dir($path) && !mkdir($path, 0700, true) && !is_dir($path)) {
@@ -443,6 +606,12 @@ class LocalThingsCertificateStore
         @chmod($path, 0700);
     }
 
+    /**
+     * Formate le sujet d'un certificat pour le diagnostic.
+     *
+     * @param array<string,mixed> $parsedCertificate Certificat analysé.
+     * @return string
+     */
     private static function subjectSummary(array $parsedCertificate)
     {
         $parts = array();
@@ -454,6 +623,12 @@ class LocalThingsCertificateStore
         return implode(', ', $parts);
     }
 
+    /**
+     * Aplatit récursivement une valeur OpenSSL en chaînes scalaires.
+     *
+     * @param mixed $value Valeur à aplatir.
+     * @return string[]
+     */
     private static function scalarValues($value)
     {
         if (!is_array($value)) {
@@ -468,12 +643,32 @@ class LocalThingsCertificateStore
         return $values;
     }
 
+    /**
+     * Vérifie qu'une chaîne est un UUID RFC 4122.
+     *
+     * @param string $value Valeur à vérifier.
+     * @return bool
+     */
     private static function isUuid($value)
     {
         return preg_match(
             '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i',
             (string) $value
         ) === 1;
+    }
+
+    /**
+     * Transmet un message au journaliseur fourni par Jeedom.
+     *
+     * @param string $level Niveau de journalisation.
+     * @param string $message Message à écrire.
+     * @return void
+     */
+    private function log($level, $message)
+    {
+        if ($this->logger !== null) {
+            call_user_func($this->logger, $level, $message);
+        }
     }
 }
 
@@ -503,6 +698,19 @@ class LocalThingsDtlsClient
     private $closed = false;
     private $logger;
 
+    /**
+     * Prépare un transport DTLS piloté par le binaire OpenSSL.
+     *
+     * @param string $openssl Chemin de l'exécutable OpenSSL.
+     * @param string $host Adresse IPv4 distante.
+     * @param int $port Port DTLS distant.
+     * @param int $localPort Port UDP source.
+     * @param string $certificatePath Certificat client.
+     * @param string $certificateChainPath Chaîne client.
+     * @param string $keyPath Clé privée cliente.
+     * @param string $rootCaPath Autorité racine de confiance.
+     * @param callable|null $logger Journaliseur facultatif.
+     */
     public function __construct(
         $openssl,
         $host,
@@ -526,6 +734,12 @@ class LocalThingsDtlsClient
         $this->validateConfiguration();
     }
 
+    /**
+     * Lance OpenSSL et attend la fin du handshake DTLS.
+     *
+     * @param float $timeout Délai maximal en secondes.
+     * @return void
+     */
     public function connect($timeout = 12.0)
     {
         if (is_resource($this->process)) {
@@ -621,6 +835,12 @@ class LocalThingsDtlsClient
         throw new RuntimeException(__('Délai de négociation DTLS dépassé', __FILE__) . ($error !== '' ? ' : ' . $error : ''));
     }
 
+    /**
+     * Envoie une trame applicative dans la session DTLS.
+     *
+     * @param string $data Données binaires à envoyer.
+     * @return void
+     */
     public function write($data)
     {
         if (!is_resource($this->process) || $this->closed) {
@@ -651,6 +871,12 @@ class LocalThingsDtlsClient
         );
     }
 
+    /**
+     * Lit une trame CoAP complète depuis la sortie OpenSSL.
+     *
+     * @param float $timeout Délai maximal en secondes.
+     * @return string|null Trame binaire, ou `null` en cas de délai dépassé.
+     */
     public function readFrame($timeout)
     {
         $deadline = microtime(true) + max(0.01, (float) $timeout);
@@ -724,6 +950,11 @@ class LocalThingsDtlsClient
         return null;
     }
 
+    /**
+     * Retourne les dernières lignes OpenSSL utiles au diagnostic.
+     *
+     * @return string
+     */
     public function errorSummary()
     {
         $this->drainStderr();
@@ -736,6 +967,11 @@ class LocalThingsDtlsClient
         return implode(' | ', array_slice($lines, -4));
     }
 
+    /**
+     * Ferme les tubes et termine le processus OpenSSL.
+     *
+     * @return void
+     */
     public function close()
     {
         if ($this->closed) {
@@ -768,11 +1004,20 @@ class LocalThingsDtlsClient
         $this->lastReceiveAt = 0.0;
     }
 
+    /**
+     * Garantit la fermeture du processus lors de la destruction de l'objet.
+     */
     public function __destruct()
     {
         $this->close();
     }
 
+    /**
+     * Extrait une trame complète du tampon de réception.
+     *
+     * @param bool $allowVariableLength Autorise la consommation du tampon entier.
+     * @return string|null
+     */
     private function takeBufferedFrame($allowVariableLength)
     {
         if ($this->receiveBuffer === '') {
@@ -795,6 +1040,11 @@ class LocalThingsDtlsClient
         return $frame;
     }
 
+    /**
+     * Transfère les diagnostics OpenSSL dans le tampon borné.
+     *
+     * @return void
+     */
     private function drainStderr()
     {
         if (!isset($this->pipes[2]) || !is_resource($this->pipes[2])) {
@@ -808,6 +1058,11 @@ class LocalThingsDtlsClient
         }
     }
 
+    /**
+     * Indique si le processus OpenSSL est toujours actif.
+     *
+     * @return bool
+     */
     private function isRunning()
     {
         if (!is_resource($this->process)) {
@@ -817,6 +1072,11 @@ class LocalThingsDtlsClient
         return !empty($status['running']);
     }
 
+    /**
+     * Valide l'exécutable, l'adresse, les ports et les fichiers DTLS.
+     *
+     * @return void
+     */
     private function validateConfiguration()
     {
         if (!is_executable($this->openssl)) {
@@ -838,6 +1098,11 @@ class LocalThingsDtlsClient
         }
     }
 
+    /**
+     * Résume la version DTLS et la suite cryptographique négociées.
+     *
+     * @return string
+     */
     private function handshakeSummary()
     {
         $details = array();
@@ -853,6 +1118,13 @@ class LocalThingsDtlsClient
         return count($details) > 0 ? ' (' . implode(', ', array_unique($details)) . ')' : '';
     }
 
+    /**
+     * Transmet un message nettoyé au journaliseur injecté.
+     *
+     * @param string $level Niveau de journalisation.
+     * @param string $message Message à écrire.
+     * @return void
+     */
     private function log($level, $message)
     {
         if ($this->logger === null) {

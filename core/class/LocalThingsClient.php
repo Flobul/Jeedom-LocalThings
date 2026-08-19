@@ -1,9 +1,15 @@
 <?php
 
+/**
+ * Signale une commande reçue par l'appareil mais refusée ou non appliquée.
+ */
 class LocalThingsCommandRejectedException extends RuntimeException
 {
 }
 
+/**
+ * Orchestre la découverte, la lecture et l'écriture d'un appareil LocalThings.
+ */
 class LocalThingsDeviceClient
 {
     public const PROBE_PORTS = array(49154, 49155, 49152, 49153, 49156, 49157, 49158, 49159, 49160);
@@ -19,6 +25,15 @@ class LocalThingsDeviceClient
     private $lockDirectory;
     private $logger;
 
+    /**
+     * Initialise le client avec ses dépendances réseau et de mapping.
+     *
+     * @param string $openssl Chemin du binaire OpenSSL.
+     * @param LocalThingsCertificateStore $certificateStore Magasin de certificats.
+     * @param string $rootCaPath Autorité racine utilisée pour DTLS.
+     * @param LocalThingsMapper|null $mapper Mappeur de ressources.
+     * @param callable|null $logger Journaliseur facultatif.
+     */
     public function __construct(
         $openssl,
         LocalThingsCertificateStore $certificateStore,
@@ -38,6 +53,14 @@ class LocalThingsDeviceClient
         @chmod($this->lockDirectory, 0700);
     }
 
+    /**
+     * Recherche un service LocalThings sur une adresse IPv4.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param int|null $preferredPort Port à essayer en priorité.
+     * @param bool $exhaustive Essaie tous les ports connus.
+     * @return array<string,mixed> Instantané complet de l'appareil.
+     */
     public function probe($host, $preferredPort = null, $exhaustive = false)
     {
         $host = $this->validateHost($host);
@@ -51,6 +74,14 @@ class LocalThingsDeviceClient
         });
     }
 
+    /**
+     * Exécute la détection après acquisition du verrou propre à l'hôte.
+     *
+     * @param string $host Adresse IPv4 validée.
+     * @param int|null $preferredPort Port prioritaire.
+     * @param bool $exhaustive Essaie tous les ports connus.
+     * @return array<string,mixed>
+     */
     private function probeUnlocked($host, $preferredPort, $exhaustive)
     {
         $identityStarted = microtime(true);
@@ -90,7 +121,7 @@ class LocalThingsDeviceClient
                 sprintf(__('[Discovery] Tentative DTLS %1$s:%2$d', __FILE__), $host, $port)
             );
             try {
-                $snapshot = $this->readSnapshot($host, $port, 5.0);
+                $snapshot = $this->readSnapshot($host, $port, 5.0, true);
                 $this->log(
                     'info',
                     sprintf(
@@ -125,14 +156,32 @@ class LocalThingsDeviceClient
         throw new RuntimeException($message);
     }
 
-    public function refresh($host, $port)
+    /**
+     * Relit l'état complet d'un appareil connu.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param int $port Port DTLS.
+     * @param array<string,mixed> $knownDevice Métadonnées déjà enregistrées dans Jeedom.
+     * @return array<string,mixed> Instantané courant.
+     */
+    public function refresh($host, $port, $knownDevice = array())
     {
         $host = $this->validateHost($host);
-        return $this->withHostLock($host, function () use ($host, $port) {
-            return $this->readSnapshot($host, (int) $port, 12.0);
+        return $this->withHostLock($host, function () use ($host, $port, $knownDevice) {
+            return $this->readSnapshot($host, (int) $port, 12.0, false, $knownDevice);
         });
     }
 
+    /**
+     * Exécute une recette d'écriture sous verrou réseau.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param int $port Port DTLS.
+     * @param array<string,mixed> $recipe Recette produite par le mappeur.
+     * @param mixed $value Valeur demandée par Jeedom.
+     * @param bool $bypassRemoteControl Ignore le contrôle Smart Control.
+     * @return array<string,mixed> Résultat et nouveaux états mappés.
+     */
     public function execute($host, $port, $recipe, $value, $bypassRemoteControl = false)
     {
         $host = $this->validateHost($host);
@@ -150,6 +199,17 @@ class LocalThingsDeviceClient
         );
     }
 
+    /**
+     * Écrit une valeur, la vérifie puis remappe les ressources actualisées.
+     *
+     * @param string $host Adresse IPv4 validée.
+     * @param int $port Port DTLS.
+     * @param array<string,mixed> $recipe Recette d'écriture.
+     * @param mixed $value Valeur demandée.
+     * @param bool $bypassRemoteControl Ignore le verrou Smart Control.
+     * @return array<string,mixed>
+     * @throws LocalThingsCommandRejectedException Si l'appareil refuse l'action.
+     */
     private function executeUnlocked($host, $port, $recipe, $value, $bypassRemoteControl)
     {
         $this->log(
@@ -230,6 +290,14 @@ class LocalThingsDeviceClient
         }
     }
 
+    /**
+     * Relit une ressource après stabilisation pour confirmer l'écriture.
+     *
+     * @param LocalThingsSession $session Session CoAP active.
+     * @param string[] $path Chemin écrit.
+     * @param array<string,mixed> $expected Valeurs attendues.
+     * @return array{matched:bool|null,representation:array<string,mixed>|null}
+     */
     private function verifyWrite(LocalThingsSession $session, $path, $expected)
     {
         $this->log(
@@ -294,11 +362,23 @@ class LocalThingsDeviceClient
         return array('matched' => false, 'representation' => $representation);
     }
 
+    /**
+     * Formate une durée en microsecondes pour les journaux.
+     *
+     * @param int $microseconds Durée en microsecondes.
+     * @return string Durée en secondes sans zéros superflus.
+     */
     private function formatDelaySeconds($microseconds)
     {
         return rtrim(rtrim(number_format(((int) $microseconds) / 1000000, 1, '.', ''), '0'), '.');
     }
 
+    /**
+     * Décode une représentation CBOR seulement lorsqu'elle est associative.
+     *
+     * @param string $payload Charge utile CBOR.
+     * @return array<string,mixed>|null
+     */
     private function decodeRepresentation($payload)
     {
         if (!is_string($payload) || $payload === '') {
@@ -312,6 +392,13 @@ class LocalThingsDeviceClient
         }
     }
 
+    /**
+     * Vérifie qu'une représentation contient toutes les valeurs attendues.
+     *
+     * @param mixed $actual Représentation relue.
+     * @param mixed $expected Sous-ensemble attendu.
+     * @return bool
+     */
     private function representationContains($actual, $expected)
     {
         if (!is_array($actual) || !is_array($expected)) {
@@ -325,6 +412,13 @@ class LocalThingsDeviceClient
         return true;
     }
 
+    /**
+     * Compare récursivement deux valeurs en tolérant les formes du firmware.
+     *
+     * @param mixed $actual Valeur reçue.
+     * @param mixed $expected Valeur attendue.
+     * @return bool
+     */
     private function valuesEquivalent($actual, $expected)
     {
         if (is_array($expected)) {
@@ -358,6 +452,12 @@ class LocalThingsDeviceClient
         return (string) $actual === (string) $expected;
     }
 
+    /**
+     * Indique si une valeur est une liste PHP à clés consécutives.
+     *
+     * @param mixed $value Valeur à tester.
+     * @return bool
+     */
     private function isList($value)
     {
         if (!is_array($value)) {
@@ -369,12 +469,23 @@ class LocalThingsDeviceClient
         return array_keys($value) === range(0, count($value) - 1);
     }
 
+    /**
+     * Encode une valeur en JSON compact et sûr pour le journal.
+     *
+     * @param mixed $value Valeur à encoder.
+     * @return string
+     */
     private function jsonForLog($value)
     {
         $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         return is_string($json) ? $json : '[unserializable]';
     }
 
+    /**
+     * Recherche un binaire OpenSSL compatible avec le transport requis.
+     *
+     * @return string Chemin exécutable, ou chaîne vide.
+     */
     public static function findOpenSsl()
     {
         $configured = '';
@@ -393,6 +504,12 @@ class LocalThingsDeviceClient
         return '';
     }
 
+    /**
+     * Vérifie les options DTLS nécessaires sur un binaire OpenSSL.
+     *
+     * @param string $openssl Chemin de l'exécutable.
+     * @return bool
+     */
     public static function supportsDtls($openssl)
     {
         if (!is_executable($openssl) || !function_exists('proc_open')) {
@@ -425,7 +542,17 @@ class LocalThingsDeviceClient
             && strpos($output, '-bind') !== false;
     }
 
-    private function readSnapshot($host, $port, $handshakeTimeout)
+    /**
+     * Construit l'instantané métier d'un appareil à partir de ses ressources.
+     *
+     * @param string $host Adresse IPv4 validée.
+     * @param int $port Port DTLS.
+     * @param float $handshakeTimeout Délai du handshake.
+     * @param bool $includeIdentity Lit les ressources OCF d'identité pendant une découverte.
+     * @param array<string,mixed> $knownDevice Métadonnées conservées lors d'un rafraîchissement léger.
+     * @return array<string,mixed>
+     */
+    private function readSnapshot($host, $port, $handshakeTimeout, $includeIdentity = true, $knownDevice = array())
     {
         if (!in_array((int) $port, self::PROBE_PORTS, true)) {
             throw new InvalidArgumentException(__('Port LocalThings invalide', __FILE__));
@@ -443,33 +570,54 @@ class LocalThingsDeviceClient
             );
             $session->connect($handshakeTimeout);
             $resources = $this->readResources($session);
-            usleep(200000);
-            $identity = $this->readIdentity($session);
+            $identity = array();
+            if ($includeIdentity) {
+                usleep(200000);
+                $identity = $this->readIdentity($session);
+            }
             $information = $resources['/information/vs/0'] ?? array();
             $serial = self::normalizeIdentifier(
                 $information['x.com.samsung.da.serialNum'] ?? ''
             );
+            if ($serial === '') {
+                $serial = self::normalizeIdentifier($knownDevice['serial'] ?? '');
+            }
             $ocfDeviceId = self::normalizeIdentifier($identity['device_id'] ?? '');
+            $knownDeviceId = self::normalizeIdentifier($knownDevice['device_id'] ?? '');
             $deviceId = $serial !== ''
                 ? $serial
-                : ($ocfDeviceId !== '' ? $ocfDeviceId : $host . ':' . $port);
+                : ($ocfDeviceId !== ''
+                    ? $ocfDeviceId
+                    : ($knownDeviceId !== '' ? $knownDeviceId : $host . ':' . $port));
             $deviceType = $this->mapper->deviceType($resources, $identity);
+            if ($deviceType === 'unknown' && !empty($knownDevice['device_type'])) {
+                $deviceType = (string) $knownDevice['device_type'];
+            }
             $model = trim((string) ($identity['model'] ?? ''));
             if ($model === '') {
                 $model = explode('|', (string) ($information['x.com.samsung.da.modelNum'] ?? ''), 2)[0];
+            }
+            if ($model === '') {
+                $model = trim((string) ($knownDevice['model'] ?? ''));
             }
             $name = trim((string) ($identity['name'] ?? ''));
             if ($name === '') {
                 $name = explode('/', (string) ($information['x.com.samsung.da.description'] ?? ''), 2)[0];
             }
             if ($name === '') {
+                $name = trim((string) ($knownDevice['name'] ?? ''));
+            }
+            if ($name === '') {
                 $name = 'Samsung ' . str_replace('_', ' ', $deviceType);
             }
             $mapped = $this->mapper->map($resources);
+            $snapshotLog = $includeIdentity
+                ? __('[Discovery] Identité reçue : modèle=%1$s, type=%2$s, série=%3$s, identifiant=%4$s, ressources=%5$d, commandes=%6$d', __FILE__)
+                : __('[Refresh] État reçu : modèle=%1$s, type=%2$s, série=%3$s, identifiant=%4$s, ressources=%5$d, commandes=%6$d', __FILE__);
             $this->log(
                 'info',
                 sprintf(
-                    __('[Discovery] Identité reçue : modèle=%1$s, type=%2$s, série=%3$s, identifiant=%4$s, ressources=%5$d, commandes=%6$d', __FILE__),
+                    $snapshotLog,
                     $model !== '' ? $model : __('inconnu', __FILE__),
                     $deviceType,
                     $serial !== '' ? $this->redactIdentifier($serial) : __('non communiquée', __FILE__),
@@ -485,7 +633,10 @@ class LocalThingsDeviceClient
                     'port' => (int) $port,
                     'serial' => $serial,
                     'name' => $name,
-                    'manufacturer' => trim((string) ($identity['manufacturer'] ?? 'Samsung')) ?: 'Samsung',
+                    'manufacturer' => trim((string) (
+                        $identity['manufacturer']
+                        ?? ($knownDevice['manufacturer'] ?? 'Samsung')
+                    )) ?: 'Samsung',
                     'model' => $model,
                     'device_type' => $deviceType,
                     'connected' => true,
@@ -501,6 +652,12 @@ class LocalThingsDeviceClient
         }
     }
 
+    /**
+     * Lit et indexe les représentations annoncées par `/device/0`.
+     *
+     * @param LocalThingsSession $session Session CoAP active.
+     * @return array<string,array<string,mixed>> Ressources indexées par URI.
+     */
     private function readResources(LocalThingsSession $session)
     {
         list($code, $payload) = $session->get(array('device', '0'), 35.0);
@@ -536,6 +693,12 @@ class LocalThingsDeviceClient
         return $resources;
     }
 
+    /**
+     * Lit les ressources OCF facultatives décrivant l'appareil.
+     *
+     * @param LocalThingsSession $session Session CoAP active.
+     * @return array<string,mixed>
+     */
     private function readIdentity(LocalThingsSession $session)
     {
         $profile = $this->getOptional($session, array('oic', 'p'));
@@ -557,6 +720,13 @@ class LocalThingsDeviceClient
         );
     }
 
+    /**
+     * Lit une ressource OCF facultative sans faire échouer la découverte.
+     *
+     * @param LocalThingsSession $session Session CoAP active.
+     * @param string[] $path Chemin de la ressource.
+     * @return array<string,mixed>
+     */
     private function getOptional(LocalThingsSession $session, $path)
     {
         try {
@@ -571,6 +741,12 @@ class LocalThingsDeviceClient
         return array();
     }
 
+    /**
+     * Écarte les numéros de série absents ou factices envoyés par Samsung.
+     *
+     * @param mixed $value Identifiant brut.
+     * @return string Identifiant exploitable, ou chaîne vide.
+     */
     private static function normalizeIdentifier($value)
     {
         $value = trim((string) $value);
@@ -589,6 +765,13 @@ class LocalThingsDeviceClient
         return $value;
     }
 
+    /**
+     * Crée une session CoAP/DTLS munie du certificat propre à l'hôte.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param int $port Port DTLS.
+     * @return LocalThingsSession
+     */
     private function createSession($host, $port)
     {
         list($certificatePath, $keyPath) = $this->certificateStore->mintLeaf('host:' . $host);
@@ -606,6 +789,12 @@ class LocalThingsDeviceClient
         return new LocalThingsSession($transport, $this->logger);
     }
 
+    /**
+     * Valide et normalise une adresse IPv4.
+     *
+     * @param string $host Adresse à valider.
+     * @return string
+     */
     private function validateHost($host)
     {
         $host = trim((string) $host);
@@ -615,6 +804,12 @@ class LocalThingsDeviceClient
         return $host;
     }
 
+    /**
+     * Calcule un port UDP source stable à partir de l'adresse cible.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @return int Port compris entre 40000 et 59999.
+     */
     private static function sourcePort($host)
     {
         $long = ip2long($host);
@@ -626,6 +821,12 @@ class LocalThingsDeviceClient
         return 40000 + ($offset % 20000);
     }
 
+    /**
+     * Classe les ports DTLS susceptibles d'être ouverts sur un hôte.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @return int[]
+     */
     private static function candidatePorts($host)
     {
         $streams = array();
@@ -684,6 +885,14 @@ class LocalThingsDeviceClient
         )));
     }
 
+    /**
+     * Construit l'ordre unique des ports à sonder.
+     *
+     * @param int[] $detectedPorts Ports détectés par UDP.
+     * @param int|null $preferredPort Port mémorisé par l'équipement.
+     * @param bool $exhaustive Ajoute tous les ports connus.
+     * @return int[]
+     */
     public static function buildProbeOrder($detectedPorts, $preferredPort = null, $exhaustive = false)
     {
         $ports = array();
@@ -701,6 +910,13 @@ class LocalThingsDeviceClient
         return array_values(array_unique($ports));
     }
 
+    /**
+     * Sérialise les échanges utilisant le même port source local.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param callable $callback Traitement à exécuter sous verrou.
+     * @return mixed Valeur retournée par le traitement.
+     */
     private function withHostLock($host, callable $callback)
     {
         $path = $this->lockDirectory . '/port-' . self::sourcePort($host) . '.lock';
@@ -729,6 +945,13 @@ class LocalThingsDeviceClient
         }
     }
 
+    /**
+     * Transmet un message nettoyé au journaliseur injecté.
+     *
+     * @param string $level Niveau de journalisation.
+     * @param string $message Message à écrire.
+     * @return void
+     */
     private function log($level, $message)
     {
         if ($this->logger === null) {
@@ -738,11 +961,23 @@ class LocalThingsDeviceClient
         call_user_func($this->logger, (string) $level, substr($message, 0, 1800));
     }
 
+    /**
+     * Calcule la durée écoulée depuis un instant haute résolution.
+     *
+     * @param float $started Valeur initiale de `microtime(true)`.
+     * @return int Durée arrondie en millisecondes.
+     */
     private function durationMs($started)
     {
         return (int) round((microtime(true) - (float) $started) * 1000);
     }
 
+    /**
+     * Masque un identifiant sensible avant journalisation.
+     *
+     * @param mixed $value Identifiant brut.
+     * @return string
+     */
     private function redactIdentifier($value)
     {
         $value = (string) $value;
@@ -755,12 +990,21 @@ class LocalThingsDeviceClient
     }
 }
 
+/**
+ * Valide les cibles et pilote la découverte réseau asynchrone.
+ */
 class LocalThingsDiscovery
 {
     private const MAX_NETWORKS = 8;
     private const MAX_HOSTS = 1024;
     private const PING_WORKERS = 48;
 
+    /**
+     * Valide et canonicalise les réseaux IPv4 autorisés pour la découverte.
+     *
+     * @param string[] $values Réseaux au format CIDR.
+     * @return string[] Réseaux uniques et normalisés.
+     */
     public static function validateNetworks($values)
     {
         $networks = array();
@@ -791,6 +1035,12 @@ class LocalThingsDiscovery
         return $networks;
     }
 
+    /**
+     * Valide une liste d'adresses IPv4 locales ciblées directement.
+     *
+     * @param string[] $values Adresses à valider.
+     * @return string[] Adresses uniques.
+     */
     public static function validateHosts($values)
     {
         $hosts = array();
@@ -812,6 +1062,16 @@ class LocalThingsDiscovery
         return $hosts;
     }
 
+    /**
+     * Prépare une tâche de découverte puis démarre son processus PHP détaché.
+     *
+     * @param string $statusPath Fichier d'état partagé.
+     * @param string $workerPath Script PHP exécuté en arrière-plan.
+     * @param string[] $networks Réseaux CIDR à parcourir.
+     * @param string[] $hosts Adresses directes prioritaires.
+     * @param string|null $logPath Fichier de journal facultatif.
+     * @return array<string,mixed> État initial de la tâche.
+     */
     public static function start($statusPath, $workerPath, $networks = array(), $hosts = array(), $logPath = null)
     {
         if (!function_exists('proc_open')) {
@@ -861,6 +1121,14 @@ class LocalThingsDiscovery
         return $status;
     }
 
+    /**
+     * Exécute une tâche de découverte et actualise son fichier d'état.
+     *
+     * @param string $jobPath Fichier décrivant la tâche.
+     * @param callable $probe Sonde appelée pour chaque adresse candidate.
+     * @param callable|null $logger Journaliseur facultatif.
+     * @return void
+     */
     public static function run($jobPath, callable $probe, $logger = null)
     {
         $job = json_decode((string) file_get_contents($jobPath), true);
@@ -994,6 +1262,12 @@ class LocalThingsDiscovery
         }
     }
 
+    /**
+     * Lit l'état persistant d'une découverte.
+     *
+     * @param string $path Chemin du fichier JSON.
+     * @return array<string,mixed>
+     */
     public static function readStatus($path)
     {
         if (!is_file($path)) {
@@ -1003,6 +1277,12 @@ class LocalThingsDiscovery
         return is_array($status) ? $status : self::newStatus(false);
     }
 
+    /**
+     * Teste en parallèle les hôtes répondant à ICMP.
+     *
+     * @param string[] $hosts Adresses à tester.
+     * @return string[] Adresses joignables.
+     */
     private static function reachableHosts($hosts)
     {
         $queue = array_values($hosts);
@@ -1048,6 +1328,11 @@ class LocalThingsDiscovery
         return array_values(array_unique($reachable));
     }
 
+    /**
+     * Extrait les voisins IPv4 connus des tables ARP ou `ip neigh`.
+     *
+     * @return string[]
+     */
     private static function neighbourHosts()
     {
         $hosts = array();
@@ -1090,6 +1375,12 @@ class LocalThingsDiscovery
         return array_values(array_unique($hosts));
     }
 
+    /**
+     * Développe des réseaux CIDR en adresses hôtes utilisables.
+     *
+     * @param string[] $networks Réseaux validés.
+     * @return string[]
+     */
     private static function expandNetworks($networks)
     {
         $hosts = array();
@@ -1105,6 +1396,13 @@ class LocalThingsDiscovery
         return array_values(array_unique($hosts));
     }
 
+    /**
+     * Calcule l'adresse réseau canonique d'un préfixe IPv4.
+     *
+     * @param string $address Adresse IPv4 quelconque du réseau.
+     * @param int $prefix Longueur du préfixe.
+     * @return string
+     */
     private static function canonicalNetwork($address, $prefix)
     {
         $value = self::unsignedIp($address);
@@ -1112,6 +1410,12 @@ class LocalThingsDiscovery
         return long2ip($value & $mask);
     }
 
+    /**
+     * Convertit une IPv4 en entier non signé portable.
+     *
+     * @param string $address Adresse IPv4.
+     * @return int
+     */
     private static function unsignedIp($address)
     {
         $value = ip2long($address);
@@ -1121,6 +1425,12 @@ class LocalThingsDiscovery
         return (int) sprintf('%u', $value);
     }
 
+    /**
+     * Crée la structure stable d'un état de découverte.
+     *
+     * @param bool $running Indique si la tâche est active.
+     * @return array<string,mixed>
+     */
     private static function newStatus($running)
     {
         return array(
@@ -1136,23 +1446,56 @@ class LocalThingsDiscovery
         );
     }
 
+    /**
+     * Écrit atomiquement une valeur JSON dans un fichier privé.
+     *
+     * @param string $path Chemin de destination.
+     * @param mixed $value Valeur sérialisable.
+     * @return void
+     */
     private static function writeJson($path, $value)
     {
         $directory = dirname($path);
-        if (!is_dir($directory)) {
-            mkdir($directory, 0700, true);
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new RuntimeException(__('Création du répertoire de découverte impossible', __FILE__));
         }
-        $temporary = $path . '.tmp';
+        $temporary = tempnam($directory, '.discovery-');
+        if ($temporary === false) {
+            throw new RuntimeException(__('Création du fichier temporaire de découverte impossible', __FILE__));
+        }
         $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false || file_put_contents($temporary, $json, LOCK_EX) === false) {
+            @unlink($temporary);
             throw new RuntimeException(__('Écriture de l’état de découverte impossible', __FILE__));
         }
         @chmod($temporary, 0600);
-        rename($temporary, $path);
+        if (!rename($temporary, $path)) {
+            @unlink($temporary);
+            throw new RuntimeException(__('Installation de l’état de découverte impossible', __FILE__));
+        }
         @chmod($path, 0600);
     }
 
+    /**
+     * Recherche un interpréteur PHP CLI exécutable.
+     *
+     * @return string
+     */
     private static function phpCli()
+    {
+        $phpCli = self::findPhpCli();
+        if ($phpCli !== '') {
+            return $phpCli;
+        }
+        throw new RuntimeException(__('Interpréteur PHP CLI introuvable', __FILE__));
+    }
+
+    /**
+     * Recherche un interpréteur PHP CLI sans lever d'exception.
+     *
+     * @return string Chemin exécutable, ou chaîne vide.
+     */
+    public static function findPhpCli()
     {
         $candidates = array('/usr/bin/php', PHP_BINDIR . '/php', PHP_BINARY);
         foreach ($candidates as $candidate) {
@@ -1163,9 +1506,17 @@ class LocalThingsDiscovery
                 return $candidate;
             }
         }
-        throw new RuntimeException(__('Interpréteur PHP CLI introuvable', __FILE__));
+        return '';
     }
 
+    /**
+     * Transmet un message nettoyé au journaliseur de la tâche.
+     *
+     * @param callable|null $logger Journaliseur facultatif.
+     * @param string $level Niveau de journalisation.
+     * @param string $message Message à écrire.
+     * @return void
+     */
     private static function log($logger, $level, $message)
     {
         if (!is_callable($logger)) {

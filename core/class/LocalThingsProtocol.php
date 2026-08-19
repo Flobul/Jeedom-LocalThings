@@ -9,6 +9,13 @@
  */
 class LocalThingsCbor
 {
+    /**
+     * Encode une valeur PHP dans sa représentation binaire CBOR.
+     *
+     * @param mixed $value Valeur à encoder.
+     * @return string Données CBOR.
+     * @throws InvalidArgumentException Lorsque le type n'est pas pris en charge.
+     */
     public static function encode($value)
     {
         if ($value === null) {
@@ -52,6 +59,14 @@ class LocalThingsCbor
         throw new InvalidArgumentException(__('Type CBOR non pris en charge', __FILE__));
     }
 
+    /**
+     * Décode la première valeur CBOR d'un flux binaire.
+     *
+     * @param string $data Données CBOR.
+     * @param int|null $consumed Nombre d'octets consommés, renseigné par référence.
+     * @return mixed Valeur PHP décodée.
+     * @throws InvalidArgumentException Lorsque le flux est vide.
+     */
     public static function decode($data, &$consumed = null)
     {
         if (!is_string($data) || $data === '') {
@@ -63,6 +78,14 @@ class LocalThingsCbor
         return $value;
     }
 
+    /**
+     * Décode une valeur CBOR à partir de l'offset courant.
+     *
+     * @param string $data Flux CBOR.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param bool $allowBreak Autorise le marqueur de fin indéfinie.
+     * @return mixed
+     */
     private static function decodeValue($data, &$offset, $allowBreak)
     {
         self::requireBytes($data, $offset, 1);
@@ -102,6 +125,15 @@ class LocalThingsCbor
         throw new UnexpectedValueException(__('Type CBOR inconnu', __FILE__));
     }
 
+    /**
+     * Décode une chaîne CBOR de longueur définie ou indéfinie.
+     *
+     * @param string $data Flux CBOR.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param int $additional Information de longueur CBOR.
+     * @param int $expectedMajor Type majeur attendu.
+     * @return string
+     */
     private static function decodeString($data, &$offset, $additional, $expectedMajor)
     {
         if ($additional !== 31) {
@@ -132,6 +164,14 @@ class LocalThingsCbor
         }
     }
 
+    /**
+     * Décode un tableau CBOR.
+     *
+     * @param string $data Flux CBOR.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param int $additional Information de longueur CBOR.
+     * @return array<int,mixed>
+     */
     private static function decodeArray($data, &$offset, $additional)
     {
         $result = array();
@@ -151,6 +191,14 @@ class LocalThingsCbor
         }
     }
 
+    /**
+     * Décode une table associative CBOR.
+     *
+     * @param string $data Flux CBOR.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param int $additional Information de longueur CBOR.
+     * @return array<mixed,mixed>
+     */
     private static function decodeMap($data, &$offset, $additional)
     {
         $result = array();
@@ -175,6 +223,14 @@ class LocalThingsCbor
         return $result;
     }
 
+    /**
+     * Décode une valeur simple ou flottante CBOR.
+     *
+     * @param string $data Flux CBOR.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param int $additional Code de la valeur simple.
+     * @return mixed
+     */
     private static function decodeSimple($data, &$offset, $additional)
     {
         switch ($additional) {
@@ -210,6 +266,12 @@ class LocalThingsCbor
         }
     }
 
+    /**
+     * Convertit un flottant IEEE-754 demi-précision en nombre PHP.
+     *
+     * @param int $raw Mot binaire sur 16 bits.
+     * @return float
+     */
     private static function decodeHalfFloat($raw)
     {
         $sign = ($raw & 0x8000) ? -1 : 1;
@@ -224,6 +286,14 @@ class LocalThingsCbor
         return $sign * pow(2, $exponent - 15) * (1 + ($fraction / 1024));
     }
 
+    /**
+     * Lit une longueur ou un entier CBOR encodé dans l'en-tête.
+     *
+     * @param string $data Flux CBOR.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param int $additional Information additionnelle CBOR.
+     * @return int|null `null` pour une longueur indéfinie.
+     */
     private static function readLength($data, &$offset, $additional)
     {
         if ($additional < 24) {
@@ -260,6 +330,13 @@ class LocalThingsCbor
         throw new UnexpectedValueException(__('Longueur CBOR réservée', __FILE__));
     }
 
+    /**
+     * Construit l'en-tête CBOR d'un type majeur et de sa longueur.
+     *
+     * @param int $major Type majeur CBOR.
+     * @param int $value Longueur ou valeur entière positive.
+     * @return string
+     */
     private static function encodeHead($major, $value)
     {
         if (!is_int($value) || $value < 0) {
@@ -282,6 +359,12 @@ class LocalThingsCbor
             . pack('N2', ($value >> 32) & 0xFFFFFFFF, $value & 0xFFFFFFFF);
     }
 
+    /**
+     * Vérifie qu'un tableau PHP possède des clés numériques consécutives.
+     *
+     * @param array<mixed> $value Tableau à vérifier.
+     * @return bool
+     */
     private static function isList($value)
     {
         $index = 0;
@@ -293,6 +376,15 @@ class LocalThingsCbor
         return true;
     }
 
+    /**
+     * Vérifie que le flux contient encore le nombre d'octets demandé.
+     *
+     * @param string $data Flux binaire.
+     * @param int $offset Position de lecture.
+     * @param int $length Nombre d'octets requis.
+     * @return void
+     * @throws UnderflowException Lorsque le flux est tronqué.
+     */
     private static function requireBytes($data, $offset, $length)
     {
         if ($length < 0 || $offset < 0 || strlen($data) - $offset < $length) {
@@ -300,6 +392,11 @@ class LocalThingsCbor
         }
     }
 
+    /**
+     * Retourne le marqueur interne représentant une fin CBOR indéfinie.
+     *
+     * @return LocalThingsCborBreakMarker
+     */
     private static function breakMarker()
     {
         static $marker = null;
@@ -310,10 +407,16 @@ class LocalThingsCbor
     }
 }
 
+/**
+ * Marqueur interne utilisé pendant le décodage des collections CBOR indéfinies.
+ */
 final class LocalThingsCborBreakMarker
 {
 }
 
+/**
+ * Encode et décode les messages CoAP échangés avec les appareils LocalThings.
+ */
 class LocalThingsCoap
 {
     public const TYPE_CON = 0;
@@ -335,6 +438,17 @@ class LocalThingsCoap
     public const CONTENT_FORMAT_CBOR = 60;
     public const BLOCK_SZX = 6;
 
+    /**
+     * Construit une trame CoAP complète.
+     *
+     * @param int $type Type de message CoAP.
+     * @param int $code Code de méthode ou de réponse.
+     * @param int $messageId Identifiant du message.
+     * @param string $token Jeton de corrélation.
+     * @param array<int,array{0:int,1:string}> $options Options CoAP.
+     * @param string $payload Charge utile binaire.
+     * @return string
+     */
     public static function build($type, $code, $messageId, $token, $options = array(), $payload = '')
     {
         $tokenLength = strlen($token);
@@ -354,6 +468,12 @@ class LocalThingsCoap
         return $packet;
     }
 
+    /**
+     * Analyse une trame CoAP binaire.
+     *
+     * @param string $data Trame reçue.
+     * @return array<string,mixed> En-tête, options et charge utile.
+     */
     public static function parse($data)
     {
         if (!is_string($data) || strlen($data) < 4) {
@@ -409,6 +529,9 @@ class LocalThingsCoap
      * Returns the exact frame length when CoAP carries a non-final Block2
      * response, null for a complete variable-length frame, or 0 while its
      * header/options are incomplete.
+     *
+     * @param string $data Tampon CoAP courant.
+     * @return int|null Longueur attendue, `0` si incomplète ou `null` si variable.
      */
     public static function streamFrameLength($data)
     {
@@ -444,6 +567,13 @@ class LocalThingsCoap
         return (int) $packet['payload_offset'] + (1 << ($szx + 4));
     }
 
+    /**
+     * Extrait toutes les valeurs d'une option CoAP.
+     *
+     * @param array<string,mixed> $packet Paquet analysé.
+     * @param int $number Numéro de l'option.
+     * @return string[]
+     */
     public static function optionValues($packet, $number)
     {
         $values = array();
@@ -455,6 +585,12 @@ class LocalThingsCoap
         return $values;
     }
 
+    /**
+     * Décode un entier non signé contenu dans une option CoAP.
+     *
+     * @param string $value Valeur binaire de l'option.
+     * @return int
+     */
     public static function uintOption($value)
     {
         $length = strlen($value);
@@ -471,6 +607,12 @@ class LocalThingsCoap
         return $result;
     }
 
+    /**
+     * Encode un entier non signé pour une option CoAP.
+     *
+     * @param int $value Entier à encoder.
+     * @return string
+     */
     public static function encodeUint($value)
     {
         $value = (int) $value;
@@ -488,6 +630,14 @@ class LocalThingsCoap
         return $result;
     }
 
+    /**
+     * Construit la valeur d'une option Block2.
+     *
+     * @param int $number Numéro du bloc.
+     * @param bool $more Indique que d'autres blocs suivent.
+     * @param int $szx Exposant de taille du bloc.
+     * @return string
+     */
     public static function blockValue($number, $more = false, $szx = self::BLOCK_SZX)
     {
         return self::encodeUint(
@@ -497,11 +647,23 @@ class LocalThingsCoap
         );
     }
 
+    /**
+     * Formate un code CoAP sous la forme `classe.détail`.
+     *
+     * @param int $code Code binaire CoAP.
+     * @return string
+     */
     public static function formatCode($code)
     {
         return ((int) $code >> 5) . '.' . str_pad((string) ((int) $code & 0x1F), 2, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * Trie et encode une liste d'options CoAP.
+     *
+     * @param array<int,array{0:int,1:string}> $options Options à encoder.
+     * @return string
+     */
     private static function encodeOptions($options)
     {
         $indexed = array();
@@ -535,6 +697,12 @@ class LocalThingsCoap
         return $result;
     }
 
+    /**
+     * Encode un delta ou une longueur étendue CoAP.
+     *
+     * @param int $value Valeur à encoder.
+     * @return array{0:int,1:string} Nibble et extension binaire.
+     */
     private static function encodeExtended($value)
     {
         if ($value < 13) {
@@ -549,6 +717,14 @@ class LocalThingsCoap
         throw new OverflowException(__('Option CoAP trop volumineuse', __FILE__));
     }
 
+    /**
+     * Décode un delta ou une longueur étendue CoAP.
+     *
+     * @param string $data Trame CoAP.
+     * @param int $offset Position courante, mise à jour par référence.
+     * @param int $nibble Valeur courte de l'en-tête.
+     * @return int
+     */
     private static function decodeExtended($data, &$offset, $nibble)
     {
         if ($nibble < 13) {
@@ -572,6 +748,9 @@ class LocalThingsCoap
     }
 }
 
+/**
+ * Gère une session CoAP corrélée au-dessus d'un transport DTLS LocalThings.
+ */
 class LocalThingsSession
 {
     private const RESPONSE_TIMEOUT = 4.0;
@@ -584,6 +763,12 @@ class LocalThingsSession
     private $lastSend = 0.0;
     private $logger;
 
+    /**
+     * Initialise une session et ses compteurs de messages.
+     *
+     * @param LocalThingsDtlsClient $transport Transport DTLS connecté à l'appareil.
+     * @param callable|null $logger Fonction de journalisation facultative.
+     */
     public function __construct(LocalThingsDtlsClient $transport, $logger = null)
     {
         $this->transport = $transport;
@@ -592,11 +777,25 @@ class LocalThingsSession
         $this->logger = is_callable($logger) ? $logger : null;
     }
 
+    /**
+     * Établit la connexion DTLS sous-jacente.
+     *
+     * @param float $timeout Délai maximal en secondes.
+     * @return void
+     */
     public function connect($timeout = 12.0)
     {
         $this->transport->connect($timeout);
     }
 
+    /**
+     * Lit une ressource CoAP et assemble ses éventuels blocs Block2.
+     *
+     * @param string|string[] $pathSegments Chemin de la ressource.
+     * @param float $timeout Délai global en secondes.
+     * @param string[] $query Paramètres URI-Query.
+     * @return array{0:int,1:string} Code CoAP et charge utile.
+     */
     public function get($pathSegments, $timeout = 25.0, $query = array())
     {
         $pathSegments = $this->normalizePath($pathSegments);
@@ -681,6 +880,14 @@ class LocalThingsSession
         }
     }
 
+    /**
+     * Écrit une valeur CBOR sur une ressource CoAP.
+     *
+     * @param string|string[] $pathSegments Chemin de la ressource.
+     * @param mixed $value Valeur PHP à encoder en CBOR.
+     * @param float $timeout Délai global en secondes.
+     * @return array{0:int,1:string} Code CoAP et charge utile.
+     */
     public function post($pathSegments, $value, $timeout = 15.0)
     {
         $pathSegments = $this->normalizePath($pathSegments);
@@ -718,11 +925,27 @@ class LocalThingsSession
         return array((int) $response['code'], (string) $response['payload']);
     }
 
+    /**
+     * Ferme le transport DTLS associé.
+     *
+     * @return void
+     */
     public function close()
     {
         $this->transport->close();
     }
 
+    /**
+     * Exécute un échange CoAP confirmable avec retransmissions.
+     *
+     * @param int $method Méthode CoAP.
+     * @param string $token Jeton de corrélation.
+     * @param array<int,array{0:int,1:string}> $options Options de la requête.
+     * @param string $payload Charge utile binaire.
+     * @param float $deadline Échéance absolue issue de `microtime(true)`.
+     * @param int|null $expectedBlock Numéro Block2 attendu.
+     * @return array<string,mixed> Réponse CoAP analysée.
+     */
     private function exchange($method, $token, $options, $payload, $deadline, $expectedBlock = null)
     {
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
@@ -792,6 +1015,13 @@ class LocalThingsSession
         throw new RuntimeException(__('Délai de réponse CoAP dépassé', __FILE__));
     }
 
+    /**
+     * Vérifie qu'une réponse correspond au bloc demandé.
+     *
+     * @param array<string,mixed> $response Réponse CoAP.
+     * @param int|null $expectedBlock Bloc attendu.
+     * @return bool
+     */
     private function matchesExpectedBlock($response, $expectedBlock)
     {
         if ($expectedBlock === null) {
@@ -816,6 +1046,11 @@ class LocalThingsSession
         return false;
     }
 
+    /**
+     * Respecte un délai minimal entre deux blocs successifs.
+     *
+     * @return void
+     */
     private function pace()
     {
         $remaining = 0.2 - (microtime(true) - $this->lastSend);
@@ -824,6 +1059,12 @@ class LocalThingsSession
         }
     }
 
+    /**
+     * Normalise un chemin CoAP en segments non vides.
+     *
+     * @param string|string[] $path Chemin à normaliser.
+     * @return string[]
+     */
     private function normalizePath($path)
     {
         if (is_string($path)) {
@@ -839,18 +1080,35 @@ class LocalThingsSession
         return $result;
     }
 
+    /**
+     * Génère le prochain identifiant de message CoAP sur 16 bits.
+     *
+     * @return int
+     */
     private function nextMessageId()
     {
         $this->messageId = ($this->messageId + 1) & 0xFFFF;
         return $this->messageId;
     }
 
+    /**
+     * Génère le prochain jeton de corrélation CoAP.
+     *
+     * @return string Jeton binaire sur quatre octets.
+     */
     private function nextToken()
     {
         $this->tokenCounter = ($this->tokenCounter + 1) & 0xFFFFFFFF;
         return pack('N', $this->tokenCounter);
     }
 
+    /**
+     * Transmet un message au journaliseur injecté.
+     *
+     * @param string $level Niveau de journalisation.
+     * @param string $message Message à écrire.
+     * @return void
+     */
     private function log($level, $message)
     {
         if ($this->logger === null) {

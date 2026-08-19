@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 43.8 49.3">
+  <defs>
+    <style>
+      .bg { fill: #4E4E4E; }
+      .shadow-stroke { fill: none; stroke: #212121; stroke-width: 2.55; stroke-linecap: round; stroke-linejoin: round; }
+      .shadow-fill { fill: #212121; }
+      .mark-stroke { fill: none; stroke: #FFFFFF; stroke-width: 2.55; stroke-linecap: round; stroke-linejoin: round; }
+      .mark-fill { fill: #FFFFFF; }
+      .hole { fill: #4E4E4E; }
+    </style>
+  </defs>
+
+  <!-- Jeedom-style tile: same geometry and grey as the provided plugin icons -->
+  <g id="background">
+    <path class="bg" d="M.2,35c0,4.7,3.8,8.5,8.5,8.5h26.4c4.7,0,8.5-3.8,8.5-8.5V8.7c0-4.7-3.8-8.5-8.5-8.5H8.7C4,.1,.2,4,.2,8.7V35z"/>
+  </g>
+
+  <!-- Subtle depth, matching the visual language of the supplied CloudEdge icon -->
+  <g id="shadow" transform="translate(.5 .45)">
+    <circle class="shadow-stroke" cx="21.9" cy="21.9" r="15.45"/>
+    <path class="shadow-stroke" d="M21.9,16.6 L21.9,37.25"/>
+    <path class="shadow-stroke" d="M14.25,21.7 C14.25,26.6 15.65,28.6 19.55,30.2 C21.0,30.8 21.9,31.35 21.9,33.0"/>
+    <path class="shadow-stroke" d="M29.55,21.7 C29.55,26.6 28.15,28.6 24.25,30.2 C22.8,30.8 21.9,31.35 21.9,33.0"/>
+    <circle class="shadow-fill" cx="21.9" cy="13.85" r="3.8"/>
+    <circle class="shadow-fill" cx="14.25" cy="19.5" r="3.8"/>
+    <circle class="shadow-fill" cx="29.55" cy="19.5" r="3.8"/>
+  </g>
+
+  <!-- LocalThings mark, redrawn as clean vectors from the project icon -->
+  <g id="localthings-mark">
+    <circle class="mark-stroke" cx="21.9" cy="21.9" r="15.45"/>
+    <path class="mark-stroke" d="M21.9,16.6 L21.9,37.25"/>
+    <path class="mark-stroke" d="M14.25,21.7 C14.25,26.6 15.65,28.6 19.55,30.2 C21.0,30.8 21.9,31.35 21.9,33.0"/>
+    <path class="mark-stroke" d="M29.55,21.7 C29.55,26.6 28.15,28.6 24.25,30.2 C22.8,30.8 21.9,31.35 21.9,33.0"/>
+    <circle class="mark-fill" cx="21.9" cy="13.85" r="3.8"/>
+    <circle class="mark-fill" cx="14.25" cy="19.5" r="3.8"/>
+    <circle class="mark-fill" cx="29.55" cy="19.5" r="3.8"/>
+  </g>
+
+  <!-- Open centres of the three LocalThings nodes -->
+  <g id="node-holes">
+    <circle class="hole" cx="21.9" cy="13.85" r="1.42"/>
+    <circle class="hole" cx="14.25" cy="19.5" r="1.42"/>
+    <circle class="hole" cx="29.55" cy="19.5" r="1.42"/>
+  </g>
+</svg>
