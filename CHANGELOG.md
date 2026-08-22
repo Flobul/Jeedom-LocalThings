@@ -7,6 +7,11 @@
   passage de la boucle de rafraîchissement.
 - Protection du répertoire privé `data/` contre les accès HTTP tout en
   maintenant les certificats et clés DTLS hors du dépôt Git.
+- Correction de l’unité des timestamps de relevé énergétique : les commandes
+  sont conservées comme valeurs Unix, sans unité de consommation.
+- Suppression des doublons d’état, de temps restant et de progression lorsque
+  l’appareil publie simultanément les ressources opérationnelles propriétaire
+  et OCF standard.
 
 ## 0.4.7
 

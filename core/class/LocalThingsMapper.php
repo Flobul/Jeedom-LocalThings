@@ -1241,7 +1241,7 @@ class LocalThingsMapper
     }
 
     /**
-     * Évite les doublons lorsqu'une ressource OCF standard remplace un fallback.
+     * Évite les doublons lorsqu'une ressource prioritaire remplace un fallback.
      *
      * @param string $href URI de la ressource.
      * @param string $field Champ Samsung.
@@ -1256,6 +1256,21 @@ class LocalThingsMapper
             && !empty($resources[$href]['x.com.samsung.da.items'])
         ) {
             return true;
+        }
+        if ($href === '/operational/state/0' && isset($resources['/operational/state/vs/0'])) {
+            $preferredFields = array(
+                'state' => 'x.com.samsung.da.state',
+                'remainingTime' => 'x.com.samsung.da.remainingTime',
+                'progressPercentage' => 'x.com.samsung.da.progressPercentage',
+            );
+            $preferred = $resources['/operational/state/vs/0'];
+            if (
+                isset($preferredFields[$field])
+                && is_array($preferred)
+                && array_key_exists($preferredFields[$field], $preferred)
+            ) {
+                return true;
+            }
         }
         $fallbacks = array(
             '/power/vs/0' => array('x.com.samsung.da.power', '/power/0'),
@@ -1889,6 +1904,9 @@ class LocalThingsMapper
     private function unit($href, $field, $representation = array(), $value = null)
     {
         if (preg_match('/unit$/i', (string) $field)) {
+            return '';
+        }
+        if (preg_match('/cumulativeDate(?:UTC)?$/i', (string) $field)) {
             return '';
         }
         if ($value !== null && !is_numeric($value)) {

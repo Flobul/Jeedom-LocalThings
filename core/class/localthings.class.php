@@ -700,6 +700,9 @@ class localthings extends eqLogic
             array('current' => 'kidslock_0_value_', 'obsolete' => 'kidslock_vs_0_kidsLock_'),
             array('current' => 'remotectrl_0_value_', 'obsolete' => 'remotectrl_vs_0_remoteControlEnabled_'),
             array('current' => 'washer_cycle_', 'obsolete' => 'course_vs_0_option_Course_'),
+            array('current' => 'operational_state_vs_0_state_', 'obsolete' => 'operational_state_0_state_'),
+            array('current' => 'operational_state_vs_0_remainingTime_', 'obsolete' => 'operational_state_0_remainingTime_'),
+            array('current' => 'operational_state_vs_0_progressPercentage_', 'obsolete' => 'operational_state_0_progressPercentage_'),
         );
         $obsoletePrefixes = array();
         foreach ($rules as $rule) {
