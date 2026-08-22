@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.8
+
+- Prise en compte du niveau de log Jeedom par le démon persistant sans
+  redémarrage manuel, grâce au rechargement de la configuration à chaque
+  passage de la boucle de rafraîchissement.
+- Protection du répertoire privé `data/` contre les accès HTTP tout en
+  maintenant les certificats et clés DTLS hors du dépôt Git.
+
 ## 0.4.7
 
 - Ajout d’une PHPDoc complète sur les classes, méthodes et fonctions PHP afin

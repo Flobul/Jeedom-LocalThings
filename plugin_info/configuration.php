@@ -135,9 +135,6 @@ sendVarToJS('version', localthings::$_pluginVersion);
             </label>
             <div class="col-sm-3">
                 <select class="configKey form-control" data-l1key="poll_interval_offline">
-                    <option value="10s">{{10 secondes}}</option>
-                    <option value="20s">{{20 secondes}}</option>
-                    <option value="30s">{{30 secondes}}</option>
                     <option value="1">1 {{min}}</option>
                     <option value="2">2 {{min}}</option>
                     <option value="3">3 {{min}}</option>

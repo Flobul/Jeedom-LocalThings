@@ -20,7 +20,7 @@ require_once __DIR__ . '/LocalThingsClient.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.7';
+    public static $_pluginVersion = '0.4.8';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -832,12 +832,40 @@ class localthings extends eqLogic
     }
 
     /**
+     * Invalide le cache du niveau de log conservé par le processus démon.
+     *
+     * Le core Jeedom charge la configuration des logs une seule fois dans la
+     * propriété statique privée `log::$config`. Comme le cron de lecture est
+     * persistant, ce cache doit être invalidé avant chaque passage pour que le
+     * niveau choisi dans Jeedom soit appliqué sans redémarrage manuel.
+     *
+     * @return bool Vrai lorsque le cache a pu être invalidé.
+     */
+    private static function reloadLogConfiguration()
+    {
+        try {
+            $property = new ReflectionProperty('log', 'config');
+            if (PHP_VERSION_ID < 80100) {
+                $property->setAccessible(true);
+            }
+            $property->setValue(null, null);
+            if (PHP_VERSION_ID < 80100) {
+                $property->setAccessible(false);
+            }
+            return true;
+        } catch (Throwable $exception) {
+            return false;
+        }
+    }
+
+    /**
      * Rafraîchit les équipements dont l'intervalle courant est écoulé.
      *
      * @return void
      */
     public static function poll()
     {
+        self::reloadLogConfiguration();
         $now = time();
         foreach (self::byType(__CLASS__, true) as $eqLogic) {
             $online = self::equipmentIsOnline($eqLogic);
