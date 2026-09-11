@@ -5,7 +5,7 @@
         "Équipement LocalThings introuvable": "Équipement LocalThings introuvable"
     },
     "plugins\/localthings\/core\/class\/LocalThingsClient.php": {
-        " (tous les ports UDP 49152-49160)": " (tous les ports UDP 49152-49160)",
+        " (ports UDP 5684 et 49152-49160)": " (ports UDP 5684 et 49152-49160)",
         "Adresse IPv4 invalide": "Adresse IPv4 invalide",
         "Adresse IPv4 locale invalide : ": "Adresse IPv4 locale invalide : ",
         "Adresse de réseau invalide : ": "Adresse de réseau invalide : ",
