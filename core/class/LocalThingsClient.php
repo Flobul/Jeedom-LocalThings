@@ -12,7 +12,7 @@ class LocalThingsCommandRejectedException extends RuntimeException
  */
 class LocalThingsDeviceClient
 {
-    public const PROBE_PORTS = array(49154, 49155, 49152, 49153, 49156, 49157, 49158, 49159, 49160);
+    public const PROBE_PORTS = array(49154, 49155, 5684, 49152, 49153, 49156, 49157, 49158, 49159, 49160);
 
     // Samsung appliances need a short quiet period after a write. Reading the
     // target resource too soon can make the firmware restore its former value.
@@ -67,7 +67,7 @@ class LocalThingsDeviceClient
         $this->log(
             'info',
             sprintf(__('[Discovery] Analyse de %s', __FILE__), $host)
-            . ($exhaustive ? __(' (tous les ports UDP 49152-49160)', __FILE__) : '')
+            . ($exhaustive ? __(' (ports UDP 5684 et 49152-49160)', __FILE__) : '')
         );
         return $this->withHostLock($host, function () use ($host, $preferredPort, $exhaustive) {
             return $this->probeUnlocked($host, $preferredPort, $exhaustive);
@@ -878,7 +878,7 @@ class LocalThingsDeviceClient
             $ports[] = $item['port'];
             fclose($item['stream']);
         }
-        $preferred = array(49154, 49155);
+        $preferred = array(49154, 49155, 5684);
         return array_values(array_unique(array_merge(
             $preferred,
             array_values(array_intersect(self::PROBE_PORTS, $ports))

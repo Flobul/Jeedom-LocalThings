@@ -114,8 +114,10 @@ sont de 1 minute en ligne et de 5 minutes hors ligne.
 
 ## Compatibilité
 
-Les appareils doivent exposer un port CoAP-DTLS dans la plage UDP
-`49152-49160`. Les générations plus anciennes qui n'exposent que le port
+Les appareils doivent exposer un service CoAP-DTLS sur le port UDP `5684` ou
+dans la plage `49152-49160`, et accepter l’authentification utilisée par le
+plugin. La présence d’un port ouvert ne garantit pas à elle seule la compatibilité.
+Les générations plus anciennes qui n'exposent que le port
 HTTPS `8888` ne sont pas prises en charge.
 
 Familles reconnues par le mappeur embarqué : climatiseurs, analyseurs et

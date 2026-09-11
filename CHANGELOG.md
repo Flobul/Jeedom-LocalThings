@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.9
+
+- Ajout du port UDP `5684` à la découverte automatique et à l’ajout manuel,
+  en complément des ports `49152-49160`.
+- Mise à jour des messages de découverte et de la documentation des ports
+  pris en charge.
+
 ## 0.4.8
 
 - Prise en compte du niveau de log Jeedom par le démon persistant sans
