@@ -48,6 +48,23 @@ La découverte ajoute un équipement Jeedom par appareil. Le client PHP lit les
 ressources réellement exposées et crée les commandes `info` et `action`
 correspondantes. Une adresse peut aussi être analysée manuellement.
 
+## Si un appareil n'est pas découvert
+
+Renseignez son adresse dans **Adresse IPv4 de l’appareil**, puis cliquez sur
+**Ajouter par IP** et attendez la fin de la recherche. Le plugin teste les ports
+pris en charge et adapte automatiquement la connexion si l'appareil répond
+depuis un autre port. Aucune commande à saisir et aucun outil supplémentaire
+à installer.
+
+Si l'ajout échoue, transmettez le journal **localthings** depuis la configuration
+du plugin. Avec le niveau de log **Info** ou **Debug**, il contient les ports
+testés, la première réponse reçue, un éventuel changement de port, le résultat
+de la négociation sécurisée et l'étape en échec. Les cookies DTLS et les clés
+privées ne sont pas inclus dans ces nouveaux diagnostics.
+
+Une réponse réseau ne suffit pas à garantir la compatibilité : l'appareil doit
+aussi accepter les certificats du plugin et exposer les ressources attendues.
+
 ## Widgets
 
 Chaque équipement peut utiliser soit le widget standard du core Jeedom, soit
@@ -133,7 +150,12 @@ utilisé que pour les modèles qui acceptent explicitement ces commandes.
 
 ## Sécurité
 
-Le plugin n'ouvre aucun port réseau. Les clés privées sont stockées dans
+Le plugin utilise un port UDP temporaire pour chaque session avec un appareil
+et un relais limité à la boucle locale pour OpenSSL. Seules les réponses de
+l'adresse interrogée sont relayées ; un changement de port initial exige une
+réponse DTLS `HelloVerifyRequest` valide, puis le pair est fixé pour la session.
+OpenSSL continue de vérifier le certificat distant.
+Les clés privées sont stockées dans
 `data/` avec des permissions restrictives et ne sont jamais retournées par
 les diagnostics.
 

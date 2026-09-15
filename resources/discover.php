@@ -15,6 +15,8 @@ if ($jobPath === false || $tmpRoot === false || strpos($jobPath, $tmpRoot . DIRE
 $logger = function ($level, $message) {
     log::add('localthings', $level, $message);
 };
+$logger('info', '[Diagnostic] LocalThings ' . localthings::$_pluginVersion
+    . ' ; PHP ' . PHP_VERSION . ' ; ' . PHP_OS_FAMILY . ' ; relais UDP actif');
 
 LocalThingsDiscovery::run($jobPath, function ($host, $exhaustive) {
     $snapshot = localthings::deviceClient()->probe($host, null, $exhaustive);

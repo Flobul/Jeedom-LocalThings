@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.10
+
+- Gestion automatique des appareils qui répondent à la négociation DTLS depuis
+  un autre port UDP, notamment après un contact sur `5684`. Le port source local
+  et la vérification des certificats sont conservés. Le port de réponse est
+  détecté à chaque connexion, sans être enregistré comme port de découverte.
+- Diagnostic intégré à **Découvrir** et **Ajouter par IP** : première réponse,
+  changement de port, bilan des datagrammes et étape en échec dans le journal
+  `localthings`, sans commande à exécuter sur Jeedom ni nouvelle dépendance.
+- La compatibilité complète de la PAC Samsung concernée reste à confirmer sur
+  l'appareil : la correction du transport ne garantit pas l'authentification
+  ni la présence des ressources LocalThings.
+
 ## 0.4.9
 
 - Ajout du port UDP `5684` à la découverte automatique et à l’ajout manuel,

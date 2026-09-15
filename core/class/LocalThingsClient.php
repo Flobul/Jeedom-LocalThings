@@ -558,6 +558,7 @@ class LocalThingsDeviceClient
             throw new InvalidArgumentException(__('Port LocalThings invalide', __FILE__));
         }
         $session = $this->createSession($host, (int) $port);
+        $stage = 'négociation DTLS';
         try {
             $this->log(
                 'debug',
@@ -569,7 +570,9 @@ class LocalThingsDeviceClient
                 )
             );
             $session->connect($handshakeTimeout);
+            $stage = 'lecture CoAP /device/0';
             $resources = $this->readResources($session);
+            $stage = 'identité et commandes';
             $identity = array();
             if ($includeIdentity) {
                 usleep(200000);
@@ -647,6 +650,10 @@ class LocalThingsDeviceClient
                 'states' => $mapped['states'],
                 'resources' => $resources,
             );
+        } catch (Exception $exception) {
+            $this->log('info', '[Diagnostic] ' . $host . ':' . $port
+                . ' ; étape en échec=' . $stage . ' ; ' . $exception->getMessage());
+            throw $exception;
         } finally {
             $session->close();
         }

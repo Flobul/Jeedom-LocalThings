@@ -673,6 +673,199 @@ class LocalThingsCertificateStore
 }
 
 /**
+ * Relais de datagrammes chiffrés : certains appareils répondent depuis un port
+ * différent du port contacté. OpenSSL conserve un pair fixe sur la boucle locale.
+ * Le socket réseau reste non connecté et conserve son port source toute la session.
+ */
+class LocalThingsUdpRelay
+{
+    private $network;
+    private $loopback;
+    private $host;
+    private $initialPort;
+    private $remotePeer;
+    private $clientPeer;
+    private $pinned = false;
+    private $logger;
+    private $sent = 0;
+    private $received = 0;
+    private $ignored = 0;
+
+    /** Initialise les deux sockets UDP, sans nouvelle dépendance ni service. */
+    public function __construct($host, $port, $localPort, $logger = null)
+    {
+        $this->host = $host;
+        $this->initialPort = $port;
+        $this->remotePeer = $host . ':' . $port;
+        $this->logger = is_callable($logger) ? $logger : null;
+        try {
+            $this->network = $this->bind('0.0.0.0:' . $localPort);
+            $this->loopback = $this->bind('127.0.0.1:0');
+        } catch (Exception $exception) {
+            $this->close();
+            throw $exception;
+        }
+    }
+
+    /** Retourne le point d'entrée local destiné à OpenSSL. */
+    public function endpoint()
+    {
+        return stream_socket_get_name($this->loopback, false);
+    }
+
+    /** Retourne les sockets à surveiller avec les tubes OpenSSL. */
+    public function streams()
+    {
+        return array($this->loopback, $this->network);
+    }
+
+    /** Nombre de datagrammes effectivement transmis à l'appareil. */
+    public function sentCount()
+    {
+        return $this->sent;
+    }
+
+    /** Transfère un nombre borné de datagrammes sans bloquer la boucle CoAP. */
+    public function pump()
+    {
+        foreach ($this->streams() as $socket) {
+            for ($count = 0; $count < 64; $count++) {
+                $peer = '';
+                $packet = @stream_socket_recvfrom($socket, 65535, 0, $peer);
+                if ($packet === false) {
+                    break;
+                }
+                if ($socket === $this->loopback) {
+                    if ($this->clientPeer === null && strpos($peer, '127.0.0.1:') === 0 && self::isDtls($packet)) {
+                        $this->clientPeer = $peer;
+                    }
+                    if ($peer !== $this->clientPeer || !self::isDtls($packet)) {
+                        $this->ignored++;
+                        continue;
+                    }
+                    $this->send($this->network, $packet, $this->remotePeer);
+                    $this->sent++;
+                    continue;
+                }
+                $separator = strrpos($peer, ':');
+                $sourceHost = $separator === false ? '' : substr($peer, 0, $separator);
+                $sourcePort = $separator === false ? 0 : (int) substr($peer, $separator + 1);
+                if ($this->clientPeer === null || $sourceHost !== $this->host
+                    || $sourcePort < 1 || $sourcePort > 65535 || !self::isDtls($packet)
+                    || ($peer !== $this->remotePeer && ($this->pinned || !self::isHelloVerifyRequest($packet)))) {
+                    $this->ignored++;
+                    if ($this->ignored <= 3) {
+                        $this->log('info', '[DTLS/UDP] Datagramme ignoré de ' . $peer
+                            . ' (' . strlen($packet) . ' octets) : adresse, port ou format DTLS inattendu');
+                    }
+                    continue;
+                }
+                if (!$this->pinned) {
+                    $this->log('info', '[DTLS/UDP] Première réponse de ' . $peer
+                        . ' : ' . (self::isHelloVerifyRequest($packet) ? 'HelloVerifyRequest' : 'DTLS')
+                        . ' (' . strlen($packet) . ' octets)');
+                    if ($peer !== $this->remotePeer) {
+                        $this->log('info', '[DTLS/UDP] Changement de port accepté : '
+                            . $this->initialPort . ' -> ' . $sourcePort
+                            . ' ; port source local conservé, vérification du certificat maintenue');
+                    }
+                    $this->remotePeer = $peer;
+                    $this->pinned = true;
+                }
+                $this->send($this->loopback, $packet, $this->clientPeer);
+                $this->received++;
+            }
+        }
+    }
+
+    /** Ferme les sockets et écrit un bilan sans contenu chiffré ni secrets. */
+    public function close()
+    {
+        if (is_resource($this->network)) {
+            $this->log('info', '[DTLS/UDP] Bilan ' . $this->host . ':' . $this->initialPort
+                . ' ; pair=' . $this->remotePeer . ' ; datagrammes envoyés=' . $this->sent
+                . ', reçus=' . $this->received . ', ignorés=' . $this->ignored
+                . ($this->received === 0 ? ' ; aucune réponse DTLS acceptée' : ''));
+        }
+        foreach (array($this->network, $this->loopback) as $socket) {
+            if (is_resource($socket)) {
+                fclose($socket);
+            }
+        }
+        $this->network = null;
+        $this->loopback = null;
+    }
+
+    /** Libère les ports même si la préparation du client échoue. */
+    public function __destruct()
+    {
+        $this->close();
+    }
+
+    /** Ouvre un socket UDP non connecté et non bloquant. */
+    private function bind($address)
+    {
+        $socket = @stream_socket_server('udp://' . $address, $errno, $error, STREAM_SERVER_BIND);
+        if ($socket === false) {
+            throw new RuntimeException('Relais UDP impossible sur ' . $address . ' : ' . $error . ' (' . $errno . ')');
+        }
+        stream_set_blocking($socket, false);
+        return $socket;
+    }
+
+    /** Vérifie la transmission intégrale d'un datagramme. */
+    private function send($socket, $packet, $peer)
+    {
+        if (@stream_socket_sendto($socket, $packet, 0, $peer) !== strlen($packet)) {
+            throw new RuntimeException('Transmission du relais UDP impossible vers ' . $peer);
+        }
+    }
+
+    /** Vérifie les limites des enregistrements DTLS 1.0/1.2, sans les déchiffrer. */
+    private static function isDtls($packet)
+    {
+        $length = strlen($packet);
+        $offset = 0;
+        if ($length < 13) {
+            return false;
+        }
+        while ($offset < $length) {
+            if ($length - $offset < 13 || ord($packet[$offset]) < 20 || ord($packet[$offset]) > 23
+                || !in_array(substr($packet, $offset + 1, 2), array("\xfe\xff", "\xfe\xfd"), true)) {
+                return false;
+            }
+            $size = unpack('n', substr($packet, $offset + 11, 2))[1];
+            $offset += 13 + $size;
+        }
+        return $offset === $length;
+    }
+
+    /** Seul un HelloVerifyRequest complet autorise le changement initial de port. */
+    private static function isHelloVerifyRequest($packet)
+    {
+        if (!self::isDtls($packet) || strlen($packet) < 28 || ord($packet[0]) !== 22
+            || substr($packet, 3, 2) !== "\x00\x00" || ord($packet[13]) !== 3
+            || substr($packet, 19, 3) !== "\x00\x00\x00"
+            || !in_array(substr($packet, 25, 2), array("\xfe\xff", "\xfe\xfd"), true)) {
+            return false;
+        }
+        $bodyLength = 3 + ord($packet[27]);
+        $encodedLength = substr(pack('N', $bodyLength), 1);
+        return strlen($packet) === 25 + $bodyLength
+            && substr($packet, 14, 3) === $encodedLength
+            && substr($packet, 22, 3) === $encodedLength;
+    }
+
+    /** Transmet uniquement les métadonnées de transport au journal du plugin. */
+    private function log($level, $message)
+    {
+        if ($this->logger !== null) {
+            call_user_func($this->logger, $level, $message);
+        }
+    }
+}
+
+/**
  * DTLS transport backed by the system OpenSSL executable.
  *
  * PHP has no native dtls:// stream transport. proc_open keeps the encrypted
@@ -697,6 +890,7 @@ class LocalThingsDtlsClient
     private $lastReceiveAt = 0.0;
     private $closed = false;
     private $logger;
+    private $relay;
 
     /**
      * Prépare un transport DTLS piloté par le binaire OpenSSL.
@@ -745,6 +939,9 @@ class LocalThingsDtlsClient
         if (is_resource($this->process)) {
             return;
         }
+        $this->closed = false;
+        $this->stderr = '';
+        $this->relay = new LocalThingsUdpRelay($this->host, $this->port, $this->localPort, $this->logger);
         $started = microtime(true);
         $this->log(
             'info',
@@ -757,9 +954,9 @@ class LocalThingsDtlsClient
             's_client',
             '-dtls1_2',
             '-connect',
-            $this->host . ':' . $this->port,
+            $this->relay->endpoint(),
             '-bind',
-            '0.0.0.0:' . $this->localPort,
+            '127.0.0.1:0',
             '-cert',
             $this->certificatePath,
             '-cert_chain',
@@ -786,6 +983,7 @@ class LocalThingsDtlsClient
         $options = array('suppress_errors' => true, 'bypass_shell' => true);
         $this->process = @proc_open($command, $descriptor, $this->pipes, null, null, $options);
         if (!is_resource($this->process)) {
+            $this->close();
             throw new RuntimeException(__('Démarrage du client OpenSSL DTLS impossible', __FILE__));
         }
         foreach ($this->pipes as $pipe) {
@@ -795,6 +993,7 @@ class LocalThingsDtlsClient
 
         $deadline = microtime(true) + max(1.0, (float) $timeout);
         while (microtime(true) < $deadline) {
+            $this->relay->pump();
             $status = proc_get_status($this->process);
             $this->drainStderr();
             if (!$status['running']) {
@@ -849,8 +1048,10 @@ class LocalThingsDtlsClient
         $data = (string) $data;
         $offset = 0;
         $length = strlen($data);
+        $sentBefore = $this->relay->sentCount();
         $deadline = microtime(true) + 3.0;
         while ($offset < $length) {
+            $this->relay->pump();
             $written = @fwrite($this->pipes[0], substr($data, $offset));
             if ($written === false) {
                 throw new RuntimeException(__('Écriture DTLS impossible : ', __FILE__) . $this->errorSummary());
@@ -865,6 +1066,17 @@ class LocalThingsDtlsClient
             $offset += $written;
         }
         fflush($this->pipes[0]);
+        // Ne pas laisser un ACK dans le tube si l'appelant ferme aussitôt la session.
+        while ($length > 0 && $this->relay->sentCount() === $sentBefore) {
+            $this->relay->pump();
+            $this->drainStderr();
+            if (!$this->isRunning() || microtime(true) >= $deadline) {
+                throw new RuntimeException('Transmission DTLS interrompue : ' . $this->errorSummary());
+            }
+            if ($this->relay->sentCount() === $sentBefore) {
+                usleep(1000);
+            }
+        }
         $this->log(
             'debug',
             sprintf(__('[DTLS] %d octets applicatifs envoyés', __FILE__), $length)
@@ -896,7 +1108,7 @@ class LocalThingsDtlsClient
             }
             $seconds = (int) floor($remaining);
             $microseconds = (int) (($remaining - $seconds) * 1000000);
-            $read = array($this->pipes[1], $this->pipes[2]);
+            $read = array_merge(array($this->pipes[1], $this->pipes[2]), $this->relay->streams());
             $write = null;
             $except = null;
             $selected = @stream_select($read, $write, $except, $seconds, $microseconds);
@@ -907,6 +1119,10 @@ class LocalThingsDtlsClient
                 break;
             }
             foreach ($read as $stream) {
+                if ($stream !== $this->pipes[1] && $stream !== $this->pipes[2]) {
+                    $this->relay->pump();
+                    continue;
+                }
                 if ($stream === $this->pipes[2]) {
                     $this->drainStderr();
                     continue;
@@ -978,6 +1194,10 @@ class LocalThingsDtlsClient
             return;
         }
         $this->closed = true;
+        if ($this->relay !== null) {
+            $this->relay->close();
+            $this->relay = null;
+        }
         foreach ($this->pipes as $pipe) {
             if (is_resource($pipe)) {
                 @fclose($pipe);
