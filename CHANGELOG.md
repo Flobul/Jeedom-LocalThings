@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.12
+
+- Après un refus du certificat client (`unknown_ca`), lecture automatique des
+  ressources OCF publiques `/oic/sec/doxm`, `/oic/sec/pstat` et `/oic/p` sur UDP
+  `5683`, avec délai limité et prise en charge des réponses fragmentées.
+- Journalisation limitée aux méthodes de transfert de propriété annoncées,
+  types de credentials, états OCF, modèle et versions. Aucun UUID, propriétaire,
+  nonce, numéro de série ou contenu de clé n'est repris dans ce diagnostic.
+- Ce diagnostic ne modifie ni l'association SmartThings ni la configuration de
+  l'appareil. Il ne résout pas à lui seul l'authentification de la PAC Samsung.
+
 ## 0.4.11
 
 - État et paramètres de découverte transférés vers le cache Jeedom, avec

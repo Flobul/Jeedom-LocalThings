@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/LocalThingsOcfDiagnostic.php';
+
 /**
  * Signale une commande reçue par l'appareil mais refusée ou non appliquée.
  */
@@ -152,6 +154,11 @@ class LocalThingsDeviceClient
                     )
                 );
             }
+        }
+        if ($authenticationError !== '') {
+            (new LocalThingsOcfDiagnostic($host))->inspect(function ($level, $message) {
+                $this->log($level, $message);
+            });
         }
         $lastError = $authenticationError !== '' ? $authenticationError : $lastError;
         $message = sprintf(

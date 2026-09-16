@@ -88,6 +88,13 @@ les autres ports ne répondent pas. Relancer la recherche ou désactiver la
 vérification du certificat serveur ne résout pas ce refus. La prise en charge
 d'un autre profil d'authentification doit être étudiée pour le modèle concerné.
 
+Après ce refus, le plugin lit automatiquement trois ressources OCF publiques
+sur le port `5683`. Les lignes **[OCF public]** du journal indiquent les méthodes
+annoncées, l'état OCF et, si accessibles, le modèle et ses versions. Les lectures
+sont limitées à deux secondes par ressource ; un accès refusé ou une absence de
+réponse sont également signalés. Aucune commande manuelle n'est nécessaire.
+Ce diagnostic ne modifie pas l'association SmartThings et n'extrait aucune clé.
+
 ## Widgets
 
 Chaque équipement peut utiliser soit le widget standard du core Jeedom, soit
