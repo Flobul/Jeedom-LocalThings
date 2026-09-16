@@ -865,6 +865,9 @@ class LocalThingsUdpRelay
     }
 }
 
+/** Le serveur DTLS rejette l'autorité du certificat présenté par Jeedom. */
+class LocalThingsClientCertificateRejected extends RuntimeException {}
+
 /**
  * DTLS transport backed by the system OpenSSL executable.
  *
@@ -941,22 +944,27 @@ class LocalThingsDtlsClient
         }
         $this->closed = false;
         $this->stderr = '';
-        $this->relay = new LocalThingsUdpRelay($this->host, $this->port, $this->localPort, $this->logger);
+        // Le relais est réservé au service OCF 5684. Les ports historiques
+        // gardent le socket connecté OpenSSL, notamment pour recevoir les ICMP.
+        $this->relay = $this->port === 5684
+            ? new LocalThingsUdpRelay($this->host, $this->port, $this->localPort, $this->logger)
+            : null;
         $started = microtime(true);
         $this->log(
             'info',
             '[DTLS] Handshake ' . $this->host . ':' . $this->port
             . ' depuis 0.0.0.0:' . $this->localPort
             . ' avec ' . $this->openssl
+            . ($this->relay !== null ? ' (relais UDP)' : ' (transport direct)')
         );
         $command = array(
             $this->openssl,
             's_client',
             '-dtls1_2',
             '-connect',
-            $this->relay->endpoint(),
+            $this->relay !== null ? $this->relay->endpoint() : $this->host . ':' . $this->port,
             '-bind',
-            '127.0.0.1:0',
+            $this->relay !== null ? '127.0.0.1:0' : '0.0.0.0:' . $this->localPort,
             '-cert',
             $this->certificatePath,
             '-cert_chain',
@@ -993,7 +1001,10 @@ class LocalThingsDtlsClient
 
         $deadline = microtime(true) + max(1.0, (float) $timeout);
         while (microtime(true) < $deadline) {
-            $this->relay->pump();
+            $this->checkDiscoveryCancellation();
+            if ($this->relay !== null) {
+                $this->relay->pump();
+            }
             $status = proc_get_status($this->process);
             $this->drainStderr();
             if (!$status['running']) {
@@ -1004,6 +1015,13 @@ class LocalThingsDtlsClient
                     __('[DTLS] Processus OpenSSL arrêté pendant le handshake', __FILE__)
                     . ($error !== '' ? ' : ' . $error : '')
                 );
+                if (stripos($error, 'alert unknown ca') !== false || stripos($error, 'alert read:fatal:unknown CA') !== false) {
+                    throw new LocalThingsClientCertificateRejected(
+                        'Appareil joignable sur ' . $this->host . ':' . $this->port
+                        . ' mais certificat client refusé par l’appareil (alerte DTLS unknown_ca / 48). '
+                        . 'Le profil d’authentification actuel n’est pas accepté.'
+                    );
+                }
                 throw new RuntimeException(__('Connexion DTLS refusée', __FILE__) . ($error !== '' ? ' : ' . $error : ''));
             }
             if (
@@ -1048,10 +1066,13 @@ class LocalThingsDtlsClient
         $data = (string) $data;
         $offset = 0;
         $length = strlen($data);
-        $sentBefore = $this->relay->sentCount();
+        $sentBefore = $this->relay !== null ? $this->relay->sentCount() : 0;
         $deadline = microtime(true) + 3.0;
         while ($offset < $length) {
-            $this->relay->pump();
+            $this->checkDiscoveryCancellation();
+            if ($this->relay !== null) {
+                $this->relay->pump();
+            }
             $written = @fwrite($this->pipes[0], substr($data, $offset));
             if ($written === false) {
                 throw new RuntimeException(__('Écriture DTLS impossible : ', __FILE__) . $this->errorSummary());
@@ -1067,7 +1088,7 @@ class LocalThingsDtlsClient
         }
         fflush($this->pipes[0]);
         // Ne pas laisser un ACK dans le tube si l'appelant ferme aussitôt la session.
-        while ($length > 0 && $this->relay->sentCount() === $sentBefore) {
+        while ($length > 0 && $this->relay !== null && $this->relay->sentCount() === $sentBefore) {
             $this->relay->pump();
             $this->drainStderr();
             if (!$this->isRunning() || microtime(true) >= $deadline) {
@@ -1093,6 +1114,7 @@ class LocalThingsDtlsClient
     {
         $deadline = microtime(true) + max(0.01, (float) $timeout);
         while (microtime(true) < $deadline) {
+            $this->checkDiscoveryCancellation();
             $frame = $this->takeBufferedFrame(false);
             if ($frame !== null) {
                 return $frame;
@@ -1106,9 +1128,13 @@ class LocalThingsDtlsClient
                 }
                 $remaining = min($remaining, $idleRemaining);
             }
+            $remaining = min($remaining, 0.25);
             $seconds = (int) floor($remaining);
             $microseconds = (int) (($remaining - $seconds) * 1000000);
-            $read = array_merge(array($this->pipes[1], $this->pipes[2]), $this->relay->streams());
+            $read = array($this->pipes[1], $this->pipes[2]);
+            if ($this->relay !== null) {
+                $read = array_merge($read, $this->relay->streams());
+            }
             $write = null;
             $except = null;
             $selected = @stream_select($read, $write, $except, $seconds, $microseconds);
@@ -1116,7 +1142,7 @@ class LocalThingsDtlsClient
                 throw new RuntimeException(__('Attente DTLS interrompue', __FILE__));
             }
             if ($selected === 0) {
-                break;
+                continue;
             }
             foreach ($read as $stream) {
                 if ($stream !== $this->pipes[1] && $stream !== $this->pipes[2]) {
@@ -1275,6 +1301,14 @@ class LocalThingsDtlsClient
             if (strlen($this->stderr) > 32768) {
                 $this->stderr = substr($this->stderr, -32768);
             }
+        }
+    }
+
+    /** Permet l'arrêt du worker pendant les attentes DTLS et CoAP. */
+    private function checkDiscoveryCancellation()
+    {
+        if (class_exists('LocalThingsDiscovery', false)) {
+            LocalThingsDiscovery::checkpoint();
         }
     }
 

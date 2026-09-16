@@ -114,14 +114,16 @@ class LocalThingsDeviceClient
             )
         );
         $lastError = '';
+        $authenticationError = '';
         foreach ($ports as $port) {
+            LocalThingsDiscovery::checkpoint();
             $started = microtime(true);
             $this->log(
                 $exhaustive ? 'info' : 'debug',
                 sprintf(__('[Discovery] Tentative DTLS %1$s:%2$d', __FILE__), $host, $port)
             );
             try {
-                $snapshot = $this->readSnapshot($host, $port, 5.0, true);
+                $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : 2.0, true);
                 $this->log(
                     'info',
                     sprintf(
@@ -132,8 +134,13 @@ class LocalThingsDeviceClient
                     )
                 );
                 return $snapshot;
+            } catch (LocalThingsDiscoveryCancelled $exception) {
+                throw $exception;
             } catch (Exception $exception) {
                 $lastError = $exception->getMessage();
+                if ($exception instanceof LocalThingsClientCertificateRejected) {
+                    $authenticationError = $lastError;
+                }
                 $this->log(
                     $exhaustive ? 'info' : 'debug',
                     sprintf(
@@ -146,6 +153,7 @@ class LocalThingsDeviceClient
                 );
             }
         }
+        $lastError = $authenticationError !== '' ? $authenticationError : $lastError;
         $message = sprintf(
             __('Aucun service LocalThings utilisable sur %1$s (ports essayés : %2$s)', __FILE__),
             $host,
@@ -934,17 +942,17 @@ class LocalThingsDeviceClient
         @chmod($path, 0600);
         $deadline = microtime(true) + 60.0;
         $locked = false;
-        do {
-            $locked = flock($handle, LOCK_EX | LOCK_NB);
-            if (!$locked) {
-                usleep(100000);
-            }
-        } while (!$locked && microtime(true) < $deadline);
-        if (!$locked) {
-            fclose($handle);
-            throw new RuntimeException(__('Un autre échange LocalThings est déjà en cours', __FILE__));
-        }
         try {
+            do {
+                LocalThingsDiscovery::checkpoint();
+                $locked = flock($handle, LOCK_EX | LOCK_NB);
+                if (!$locked) {
+                    usleep(100000);
+                }
+            } while (!$locked && microtime(true) < $deadline);
+            if (!$locked) {
+                throw new RuntimeException(__('Un autre échange LocalThings est déjà en cours', __FILE__));
+            }
             return call_user_func($callback);
         } finally {
             flock($handle, LOCK_UN);
@@ -997,6 +1005,9 @@ class LocalThingsDeviceClient
     }
 }
 
+/** Arrêt coopératif demandé depuis l'interface Jeedom. */
+class LocalThingsDiscoveryCancelled extends RuntimeException {}
+
 /**
  * Valide les cibles et pilote la découverte réseau asynchrone.
  */
@@ -1005,6 +1016,11 @@ class LocalThingsDiscovery
     private const MAX_NETWORKS = 8;
     private const MAX_HOSTS = 1024;
     private const PING_WORKERS = 48;
+    private const STATUS_KEY = 'localthings::discovery::status';
+    private const JOB_PREFIX = 'localthings::discovery::job::';
+    private const CACHE_TTL = 86400;
+    private static $activeJob = null;
+    private static $lastCheckpoint = 0.0;
 
     /**
      * Valide et canonicalise les réseaux IPv4 autorisés pour la découverte.
@@ -1069,90 +1085,90 @@ class LocalThingsDiscovery
         return $hosts;
     }
 
-    /**
-     * Prépare une tâche de découverte puis démarre son processus PHP détaché.
-     *
-     * @param string $statusPath Fichier d'état partagé.
-     * @param string $workerPath Script PHP exécuté en arrière-plan.
-     * @param string[] $networks Réseaux CIDR à parcourir.
-     * @param string[] $hosts Adresses directes prioritaires.
-     * @param string|null $logPath Fichier de journal facultatif.
-     * @return array<string,mixed> État initial de la tâche.
-     */
-    public static function start($statusPath, $workerPath, $networks = array(), $hosts = array(), $logPath = null)
+    /** Prépare les paramètres en cache et lance un worker identifié par un jeton. */
+    public static function start($workerPath, $networks = array(), $hosts = array(), $logPath = null)
     {
-        if (!function_exists('proc_open')) {
-            throw new RuntimeException(__('La fonction PHP proc_open est désactivée', __FILE__));
-        }
-        if (!function_exists('exec')) {
-            throw new RuntimeException(__('La fonction PHP exec est désactivée', __FILE__));
-        }
-        $statusPath = (string) $statusPath;
-        if (self::readStatus($statusPath)['running'] ?? false) {
-            throw new RuntimeException(__('Une découverte LocalThings est déjà en cours', __FILE__));
+        if (!function_exists('exec') || !function_exists('proc_open')) {
+            throw new RuntimeException('exec et proc_open sont nécessaires à la découverte');
         }
         $hosts = count($hosts) > 0 ? self::validateHosts($hosts) : array();
         $networks = count($hosts) === 0 ? self::validateNetworks($networks) : array();
-        $jobPath = dirname($statusPath) . '/discovery-job-' . bin2hex(random_bytes(6)) . '.json';
-        self::writeJson($jobPath, array(
-            'status_path' => $statusPath,
-            'networks' => $networks,
-            'hosts' => $hosts,
-        ));
-        self::writeJson($statusPath, self::newStatus(true));
-
-        $command = escapeshellarg(self::phpCli())
-            . ' ' . escapeshellarg((string) $workerPath)
-            . ' --job ' . escapeshellarg($jobPath);
-        if ($logPath !== null && $logPath !== '') {
-            $command .= ' >> ' . escapeshellarg((string) $logPath) . ' 2>&1';
-        } else {
-            $command .= ' > /dev/null 2>&1';
-        }
-        $command .= ' & echo $!';
-        $output = array();
-        $exitCode = 0;
-        exec($command, $output, $exitCode);
-        $workerPid = count($output) > 0 ? (int) trim((string) end($output)) : 0;
-        if ($exitCode !== 0 || $workerPid <= 0) {
-            @unlink($jobPath);
-            $status = self::newStatus(false);
-            $status['finished'] = time();
-            $status['errors'][] = __('Le processus PHP de découverte n’a pas démarré', __FILE__);
-            self::writeJson($statusPath, $status);
-            throw new RuntimeException($status['errors'][0]);
-        }
-        $status = self::readStatus($statusPath);
-        $status['worker_pid'] = $workerPid;
-        self::writeJson($statusPath, $status);
-        return $status;
+        $php = self::phpCli();
+        return self::withStateLock(function () use ($workerPath, $networks, $hosts, $logPath, $php) {
+            if (!empty(self::recoverStatus()['running'])) {
+                throw new RuntimeException(__('Une découverte LocalThings est déjà en cours', __FILE__));
+            }
+            $jobId = bin2hex(random_bytes(16));
+            cache::set(self::JOB_PREFIX . $jobId, array('hosts' => $hosts, 'networks' => $networks), 900);
+            $status = self::newStatus(true);
+            $status['job_id'] = $jobId;
+            self::storeStatus($status);
+            $command = escapeshellarg($php) . ' ' . escapeshellarg((string) $workerPath)
+                . ' --job ' . escapeshellarg($jobId)
+                . ($logPath ? ' >> ' . escapeshellarg((string) $logPath) : ' > /dev/null')
+                . ' 2>&1 & echo $!';
+            $output = array();
+            $exitCode = 0;
+            try {
+                exec($command, $output, $exitCode);
+                $pid = count($output) > 0 ? (int) trim((string) end($output)) : 0;
+                if ($exitCode !== 0 || $pid <= 0) {
+                    throw new RuntimeException(__('Le processus PHP de découverte n’a pas démarré', __FILE__));
+                }
+                $status['worker_pid'] = $pid;
+                self::storeStatus($status);
+                return $status;
+            } catch (Throwable $error) {
+                cache::delete(self::JOB_PREFIX . $jobId);
+                $status['running'] = false;
+                $status['finished'] = time();
+                $status['errors'][] = $error->getMessage();
+                self::storeStatus($status);
+                throw $error;
+            }
+        });
     }
 
     /**
-     * Exécute une tâche de découverte et actualise son fichier d'état.
+     * Exécute une tâche de découverte et actualise le cache Jeedom.
      *
-     * @param string $jobPath Fichier décrivant la tâche.
+     * @param string $jobId Jeton de la tâche conservée en cache.
      * @param callable $probe Sonde appelée pour chaque adresse candidate.
      * @param callable|null $logger Journaliseur facultatif.
      * @return void
      */
-    public static function run($jobPath, callable $probe, $logger = null)
+    public static function run($jobId, callable $probe, $logger = null)
     {
-        $job = json_decode((string) file_get_contents($jobPath), true);
-        if (!is_array($job) || empty($job['status_path'])) {
+        if (!preg_match('/^[a-f0-9]{32}$/D', (string) $jobId)) {
             throw new InvalidArgumentException(__('Tâche de découverte invalide', __FILE__));
         }
-        $statusPath = (string) $job['status_path'];
-        $directHosts = self::validateHosts($job['hosts'] ?? array());
-        self::log(
-            $logger,
-            'info',
-            sprintf(
-                __('[Discovery] Tâche PHP démarrée, mode=%s', __FILE__),
-                count($directHosts) > 0 ? __('adresse directe', __FILE__) : __('réseau', __FILE__)
-            )
-        );
+        $job = self::withStateLock(function () use ($jobId) {
+            $job = cache::byKey(self::JOB_PREFIX . $jobId)->getValue(null);
+            $status = self::rawStatus();
+            if (!is_array($job) || ($status['job_id'] ?? '') !== $jobId || empty($status['running'])
+                || !empty($status['claimed'])) {
+                throw new RuntimeException('Tâche de découverte absente, expirée ou déjà démarrée');
+            }
+            $status['claimed'] = true;
+            $status['worker_pid'] = getmypid();
+            $status['heartbeat'] = time();
+            self::storeStatus($status);
+            cache::delete(self::JOB_PREFIX . $jobId);
+            return $job;
+        });
+        self::$activeJob = $jobId;
+        self::$lastCheckpoint = 0.0;
         try {
+            $directHosts = self::validateHosts($job['hosts'] ?? array());
+            self::log(
+                $logger,
+                'info',
+                sprintf(
+                    __('[Discovery] Tâche PHP démarrée, mode=%s', __FILE__),
+                    count($directHosts) > 0 ? __('adresse directe', __FILE__) : __('réseau', __FILE__)
+                )
+            );
+            self::checkpoint();
             if (count($directHosts) > 0) {
                 $candidates = $directHosts;
             } else {
@@ -1196,13 +1212,16 @@ class LocalThingsDiscovery
                     count($candidates)
                 )
             );
-            $status = self::newStatus(true);
+            $status = self::rawStatus();
             $status['candidates'] = count($candidates);
             $status['progress'] = 25;
-            self::writeJson($statusPath, $status);
+            self::publish($status);
 
             $total = max(1, count($candidates));
             foreach ($candidates as $index => $host) {
+                self::checkpoint(true);
+                $status['current_host'] = $host;
+                self::publish($status);
                 self::log(
                     $logger,
                     'info',
@@ -1221,6 +1240,8 @@ class LocalThingsDiscovery
                         'info',
                         sprintf(__('[Discovery] %s enregistré dans Jeedom', __FILE__), $host)
                     );
+                } catch (LocalThingsDiscoveryCancelled $exception) {
+                    throw $exception;
                 } catch (Exception $exception) {
                     self::log(
                         $logger,
@@ -1237,12 +1258,13 @@ class LocalThingsDiscovery
                 }
                 $status['tested'] = $index + 1;
                 $status['progress'] = 25 + (int) floor((($index + 1) * 74) / $total);
-                self::writeJson($statusPath, $status);
+                self::publish($status);
             }
             $status['running'] = false;
+            $status['current_host'] = '';
             $status['finished'] = time();
             $status['progress'] = 100;
-            self::writeJson($statusPath, $status);
+            self::publish($status);
             self::log(
                 $logger,
                 'info',
@@ -1252,36 +1274,151 @@ class LocalThingsDiscovery
                     count($status['errors'])
                 )
             );
-        } catch (Exception $exception) {
-            $status = self::readStatus($statusPath);
+        } catch (Throwable $exception) {
+            $status = self::rawStatus();
             $status['running'] = false;
             $status['finished'] = time();
             $status['progress'] = 100;
-            $status['errors'][] = $exception->getMessage();
-            self::writeJson($statusPath, $status);
+            $status['cancelled'] = $exception instanceof LocalThingsDiscoveryCancelled;
+            $status['current_host'] = '';
+            if (!$status['cancelled']) {
+                $status['errors'][] = $exception->getMessage();
+            }
+            self::publish($status);
             self::log(
                 $logger,
-                'error',
+                $status['cancelled'] ? 'info' : 'error',
                 __('[Discovery] Tâche interrompue : ', __FILE__) . $exception->getMessage()
+                . ' ; ' . basename($exception->getFile()) . ':' . $exception->getLine()
             );
         } finally {
-            @unlink($jobPath);
+            self::$activeJob = null;
+            cache::delete(self::JOB_PREFIX . $jobId);
         }
     }
 
-    /**
-     * Lit l'état persistant d'une découverte.
-     *
-     * @param string $path Chemin du fichier JSON.
-     * @return array<string,mixed>
-     */
-    public static function readStatus($path)
+    /** État partagé, avec récupération d'une tâche morte ou sans heartbeat. */
+    public static function readStatus()
     {
-        if (!is_file($path)) {
-            return self::newStatus(false);
+        return self::withStateLock(function () { return self::recoverStatus(); });
+    }
+
+    /** Demande l'arrêt du job affiché ; un ancien onglet ne peut arrêter le suivant. */
+    public static function stop($jobId)
+    {
+        return self::withStateLock(function () use ($jobId) {
+            $status = self::recoverStatus();
+            if (!empty($status['running']) && ($status['job_id'] ?? '') === (string) $jobId) {
+                $status['stop_requested'] = true;
+                self::storeStatus($status);
+            }
+            return $status;
+        });
+    }
+
+    /** Contrôle d'annulation borné, appelé dans les attentes réseau du worker. */
+    public static function checkpoint($force = false)
+    {
+        if (self::$activeJob === null || (!$force && microtime(true) - self::$lastCheckpoint < 0.25)) {
+            return;
         }
-        $status = json_decode((string) file_get_contents($path), true);
+        self::$lastCheckpoint = microtime(true);
+        self::withStateLock(function () {
+            $status = self::rawStatus();
+            if (($status['job_id'] ?? '') !== self::$activeJob || empty($status['running'])
+                || !empty($status['stop_requested'])) {
+                throw new LocalThingsDiscoveryCancelled('Découverte arrêtée à la demande de l’utilisateur ou tâche expirée');
+            }
+            if (time() - (int) ($status['heartbeat'] ?? 0) >= 2) {
+                $status['heartbeat'] = time();
+                self::storeStatus($status);
+            }
+        });
+    }
+
+    /** Écriture protégée contre les retours tardifs et les demandes d'arrêt concurrentes. */
+    private static function publish($status)
+    {
+        self::withStateLock(function () use ($status) {
+            $current = self::rawStatus();
+            if (($current['job_id'] ?? '') !== self::$activeJob || empty($current['running'])) {
+                return;
+            }
+            $status['stop_requested'] = !empty($current['stop_requested']);
+            $status['worker_pid'] = $current['worker_pid'];
+            $status['claimed'] = true;
+            $status['heartbeat'] = time();
+            if (!$status['running'] && $status['stop_requested']) {
+                $status['cancelled'] = true;
+            }
+            self::storeStatus($status);
+        });
+    }
+
+    private static function rawStatus()
+    {
+        $status = cache::byKey(self::STATUS_KEY)->getValue(null);
         return is_array($status) ? $status : self::newStatus(false);
+    }
+
+    private static function storeStatus($status)
+    {
+        cache::set(self::STATUS_KEY, $status, self::CACHE_TTL);
+    }
+
+    /** N'envoie aucun signal à un PID susceptible d'avoir été réutilisé. */
+    private static function recoverStatus()
+    {
+        $status = self::rawStatus();
+        if (!empty($status['running'])) {
+            $age = time() - (int) ($status['heartbeat'] ?? $status['started']);
+            $dead = false;
+            $pid = (int) ($status['worker_pid'] ?? 0);
+            if ($age > 10 && $pid > 0 && is_dir('/proc')) {
+                $command = @file_get_contents('/proc/' . $pid . '/cmdline');
+                $dead = $command === false || strpos($command, 'discover.php') === false
+                    || strpos($command, (string) $status['job_id']) === false;
+            }
+            if ($dead || $age > 180) {
+                $status['running'] = false;
+                $status['finished'] = time();
+                $status['current_host'] = '';
+                $status['cancelled'] = !empty($status['stop_requested']);
+                if (!$status['cancelled']) {
+                    $status['errors'][] = 'Le processus de découverte est arrêté ou ne répond plus.';
+                }
+                cache::delete(self::JOB_PREFIX . ($status['job_id'] ?? ''));
+                self::storeStatus($status);
+            }
+        }
+        return $status;
+    }
+
+    /** Seul un verrou vide reste sur disque : cache::set n'est pas un verrou atomique. */
+    private static function withStateLock(callable $callback)
+    {
+        $directory = __DIR__ . '/../../data';
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new RuntimeException('Répertoire privé de découverte inaccessible');
+        }
+        $handle = fopen($directory . '/discovery.lock', 'c');
+        if ($handle === false) {
+            throw new RuntimeException('Verrou de découverte inaccessible');
+        }
+        @chmod($directory . '/discovery.lock', 0600);
+        try {
+            $deadline = microtime(true) + 3;
+            while (!flock($handle, LOCK_EX | LOCK_NB)) {
+                if (microtime(true) >= $deadline) {
+                    throw new RuntimeException('La découverte est occupée, réessayez dans quelques secondes');
+                }
+                usleep(10000);
+            }
+            return $callback();
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
     }
 
     /**
@@ -1295,41 +1432,51 @@ class LocalThingsDiscovery
         $queue = array_values($hosts);
         $running = array();
         $reachable = array();
-        while (count($queue) > 0 || count($running) > 0) {
-            while (count($queue) > 0 && count($running) < self::PING_WORKERS) {
-                $host = array_shift($queue);
-                $descriptor = array(
-                    0 => array('file', '/dev/null', 'r'),
-                    1 => array('file', '/dev/null', 'w'),
-                    2 => array('file', '/dev/null', 'w'),
-                );
-                $pipes = array();
-                $process = @proc_open(
-                    array('ping', '-n', '-c', '1', '-W', '1', $host),
-                    $descriptor,
-                    $pipes,
-                    null,
-                    null,
-                    array('bypass_shell' => true, 'suppress_errors' => true)
-                );
-                if (is_resource($process)) {
-                    $running[] = array('host' => $host, 'process' => $process);
+        try {
+            while (count($queue) > 0 || count($running) > 0) {
+                self::checkpoint();
+                while (count($queue) > 0 && count($running) < self::PING_WORKERS) {
+                    $host = array_shift($queue);
+                    $descriptor = array(
+                        0 => array('file', '/dev/null', 'r'),
+                        1 => array('file', '/dev/null', 'w'),
+                        2 => array('file', '/dev/null', 'w'),
+                    );
+                    $pipes = array();
+                    $process = @proc_open(
+                        array('ping', '-n', '-c', '1', '-W', '1', $host),
+                        $descriptor,
+                        $pipes,
+                        null,
+                        null,
+                        array('bypass_shell' => true, 'suppress_errors' => true)
+                    );
+                    if (is_resource($process)) {
+                        $running[] = array('host' => $host, 'process' => $process);
+                    }
+                }
+                foreach ($running as $index => $item) {
+                    $status = proc_get_status($item['process']);
+                    if ($status['running']) {
+                        continue;
+                    }
+                    if ((int) $status['exitcode'] === 0) {
+                        $reachable[] = $item['host'];
+                    }
+                    proc_close($item['process']);
+                    unset($running[$index]);
+                }
+                $running = array_values($running);
+                if (count($running) > 0) {
+                    usleep(20000);
                 }
             }
-            foreach ($running as $index => $item) {
-                $status = proc_get_status($item['process']);
-                if ($status['running']) {
-                    continue;
+        } finally {
+            foreach ($running as $item) {
+                if (is_resource($item['process'])) {
+                    proc_terminate($item['process']);
+                    proc_close($item['process']);
                 }
-                if ((int) $status['exitcode'] === 0) {
-                    $reachable[] = $item['host'];
-                }
-                proc_close($item['process']);
-                unset($running[$index]);
-            }
-            $running = array_values($running);
-            if (count($running) > 0) {
-                usleep(20000);
             }
         }
         return array_values(array_unique($reachable));
@@ -1450,37 +1597,12 @@ class LocalThingsDiscovery
             'found' => array(),
             'errors' => array(),
             'worker_pid' => 0,
+            'job_id' => '',
+            'current_host' => '',
+            'stop_requested' => false,
+            'cancelled' => false,
+            'heartbeat' => time(),
         );
-    }
-
-    /**
-     * Écrit atomiquement une valeur JSON dans un fichier privé.
-     *
-     * @param string $path Chemin de destination.
-     * @param mixed $value Valeur sérialisable.
-     * @return void
-     */
-    private static function writeJson($path, $value)
-    {
-        $directory = dirname($path);
-        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
-            throw new RuntimeException(__('Création du répertoire de découverte impossible', __FILE__));
-        }
-        $temporary = tempnam($directory, '.discovery-');
-        if ($temporary === false) {
-            throw new RuntimeException(__('Création du fichier temporaire de découverte impossible', __FILE__));
-        }
-        $json = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($json === false || file_put_contents($temporary, $json, LOCK_EX) === false) {
-            @unlink($temporary);
-            throw new RuntimeException(__('Écriture de l’état de découverte impossible', __FILE__));
-        }
-        @chmod($temporary, 0600);
-        if (!rename($temporary, $path)) {
-            @unlink($temporary);
-            throw new RuntimeException(__('Installation de l’état de découverte impossible', __FILE__));
-        }
-        @chmod($path, 0600);
     }
 
     /**

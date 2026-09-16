@@ -48,6 +48,16 @@ La découverte ajoute un équipement Jeedom par appareil. Le client PHP lit les
 ressources réellement exposées et crée les commandes `info` et `action`
 correspondantes. Une adresse peut aussi être analysée manuellement.
 
+Pendant une recherche, le bouton affiche **Découverte en cours** avec une icône
+animée, y compris après rechargement de la page. Cliquez dessus pour demander
+l'arrêt : une confirmation s'affiche, puis le bouton indique **Arrêt en cours…**
+jusqu'à la fermeture de la tâche. Les appareils déjà ajoutés sont conservés.
+L'ajout par IP est indisponible tant qu'une recherche est active.
+
+L'état et les paramètres de découverte sont conservés dans le cache Jeedom,
+sans fichiers `discovery-status.json` ou `discovery-job-*.json` gérés dans `/tmp`.
+Un verrou vide dans le répertoire privé `data/` empêche les démarrages simultanés.
+
 ## Si un appareil n'est pas découvert
 
 Renseignez son adresse dans **Adresse IPv4 de l’appareil**, puis cliquez sur
@@ -55,6 +65,12 @@ Renseignez son adresse dans **Adresse IPv4 de l’appareil**, puis cliquez sur
 pris en charge et adapte automatiquement la connexion si l'appareil répond
 depuis un autre port. Aucune commande à saisir et aucun outil supplémentaire
 à installer.
+
+Le relais est réservé au port `5684`. Les ports `49152-49160` utilisent le
+transport OpenSSL direct. La découverte réseau attend jusqu'à 2 secondes par
+négociation, contre 5 secondes pour **Ajouter par IP**, à privilégier si la
+recherche réseau ne trouve pas un appareil lent à répondre. L'adresse en cours
+d'analyse est affichée dans la progression.
 
 Si l'ajout échoue, transmettez le journal **localthings** depuis la configuration
 du plugin. Avec le niveau de log **Info** ou **Debug**, il contient les ports
@@ -64,6 +80,13 @@ privées ne sont pas inclus dans ces nouveaux diagnostics.
 
 Une réponse réseau ne suffit pas à garantir la compatibilité : l'appareil doit
 aussi accepter les certificats du plugin et exposer les ressources attendues.
+
+Si le diagnostic indique **certificat client refusé par l’appareil (unknown_ca)**,
+la communication atteint l'appareil, mais celui-ci refuse le profil
+d'authentification présenté par Jeedom. Le bilan conserve cette cause même si
+les autres ports ne répondent pas. Relancer la recherche ou désactiver la
+vérification du certificat serveur ne résout pas ce refus. La prise en charge
+d'un autre profil d'authentification doit être étudiée pour le modèle concerné.
 
 ## Widgets
 
@@ -151,7 +174,7 @@ utilisé que pour les modèles qui acceptent explicitement ces commandes.
 ## Sécurité
 
 Le plugin utilise un port UDP temporaire pour chaque session avec un appareil
-et un relais limité à la boucle locale pour OpenSSL. Seules les réponses de
+et, pour le port `5684`, un relais limité à la boucle locale pour OpenSSL. Seules les réponses de
 l'adresse interrogée sont relayées ; un changement de port initial exige une
 réponse DTLS `HelloVerifyRequest` valide, puis le pair est fixé pour la session.
 OpenSSL continue de vérifier le certificat distant.

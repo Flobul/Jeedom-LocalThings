@@ -18,6 +18,9 @@ try {
         case 'scanStatus':
             ajax::success(localthings::scanStatus());
             break;
+        case 'stopScan':
+            ajax::success(localthings::stopDiscovery((string) init('job_id')));
+            break;
         case 'probe':
             ajax::success(localthings::probeHost((string) init('host')));
             break;

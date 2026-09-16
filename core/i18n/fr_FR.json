@@ -530,6 +530,7 @@
         "État du filtre": "État du filtre"
     },
     "plugins\/localthings\/core\/class\/localthings.class.php": {
+        "Affichage indisponible. Consultez le journal localthings.": "Affichage indisponible. Consultez le journal localthings.",
         "Action": "Action",
         "Activer": "Activer",
         "Activez les extensions et fonctions PHP indiquées": "Activez les extensions et fonctions PHP indiquées",
@@ -614,6 +615,10 @@
         "Santé LocalThings": "Santé LocalThings"
     },
     "plugins\/localthings\/desktop\/js\/localthings.js": {
+        "Arrêt en cours…": "Arrêt en cours…",
+        "Découverte en cours": "Découverte en cours",
+        "Découverte arrêtée": "Découverte arrêtée",
+        "Une découverte est déjà en cours. Voulez-vous l’arrêter ?": "Une découverte est déjà en cours. Voulez-vous l’arrêter ?",
         "Afficher": "Afficher",
         "Analyse de l’adresse démarrée": "Analyse de l’adresse démarrée",
         "Aucune": "Aucune",

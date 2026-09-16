@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.11
+
+- État et paramètres de découverte transférés vers le cache Jeedom, avec
+  expiration, protection contre les démarrages concurrents et récupération des
+  tâches interrompues. Suppression de l'utilisation des fichiers de découverte
+  dans `/tmp`.
+- Bouton **Découverte en cours** animé, reprise du suivi au chargement de la
+  page et arrêt après confirmation. L'annulation ferme les échanges du worker
+  et conserve les appareils déjà ajoutés.
+- Diagnostic explicite du certificat client refusé par l'appareil (`unknown_ca`,
+  alerte 48), conservé dans le bilan final au lieu du dernier timeout rencontré.
+- Rétablissement du transport OpenSSL direct pour les ports `49152-49160`.
+  Le relais ajouté en 0.4.10 est réservé au port `5684`, concerné par le
+  changement de port de réponse observé sur la PAC Samsung.
+- Réduction du délai de négociation par port à 2 secondes pendant la découverte
+  réseau ; **Ajouter par IP** conserve 5 secondes par port. L'adresse en cours
+  d'analyse apparaît dans la progression.
+- Isolation des erreurs PHP de rendu des widgets LocalThings : affichage d'un
+  message de remplacement et journalisation de l'équipement, du fichier et de
+  la ligne. Une erreur PHP de la tâche de découverte est également journalisée
+  et termine son état de progression.
+
 ## 0.4.10
 
 - Gestion automatique des appareils qui répondent à la négociation DTLS depuis

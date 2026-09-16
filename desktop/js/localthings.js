@@ -26,59 +26,121 @@
     });
   }
 
+  let scanState = { running: false };
+  let scanTimer = null;
+  let scanPolling = false;
+  let scanBusy = false;
+  let scanGeneration = 0;
+
+  function renderScan(status) {
+    scanState = status || { running: false };
+    const scan = document.getElementById("bt_scanLocalthings");
+    const stopping = scanState.running && scanState.stop_requested;
+    const icon = scan?.querySelector("i");
+    const label = scan?.querySelector("span");
+    if (icon) icon.className = scanState.running ? "fas fa-spinner fa-spin" : "fas fa-satellite-dish";
+    if (label) label.textContent = stopping ? "{{Arrêt en cours…}}"
+      : scanState.running ? "{{Découverte en cours}}" : "{{Découvrir}}";
+    scan?.setAttribute("aria-busy", String(Boolean(scanState.running)));
+    scan?.setAttribute("aria-disabled", String(scanBusy || Boolean(stopping)));
+    const probe = document.getElementById("bt_probeLocalthings");
+    if (probe) probe.disabled = scanBusy || Boolean(scanState.running);
+    const progress = document.getElementById("localthings-scan-progress");
+    const bar = progress?.querySelector(".progress-bar");
+    if (progress && bar) {
+      progress.style.display = scanState.running ? "block" : "none";
+      bar.style.width = Number(scanState.progress || 0) + "%";
+      bar.textContent = scanState.running
+        ? Number(scanState.tested || 0) + "/" + Number(scanState.candidates || 0)
+          + (scanState.current_host ? " · " + scanState.current_host : "") : "";
+    }
+  }
+
+  function scheduleScan(delay) {
+    window.clearTimeout(scanTimer);
+    if (root.isConnected) scanTimer = window.setTimeout(pollScan, delay);
+  }
+
   function pollScan() {
+    if (!root.isConnected || scanPolling) return;
+    scanPolling = true;
+    const generation = scanGeneration;
     ajax("scanStatus", {}, function (status) {
-      const progress = document.getElementById("localthings-scan-progress");
-      const bar = progress?.querySelector(".progress-bar");
-      if (progress && bar) {
-        progress.style.display = status.running ? "block" : "none";
-        bar.style.width = Number(status.progress || 0) + "%";
-        bar.textContent = status.running
-          ? Number(status.tested || 0) + "/" + Number(status.candidates || 0)
-          : "";
-      }
-      if (status.running) {
-        window.setTimeout(pollScan, 1500);
-      } else {
-        const found = Array.isArray(status.found) ? status.found.length : 0;
-        if (found > 0) {
-          jeedomUtils.showAlert({
-            message: found + " {{appareil(s) LocalThings découvert(s)}}",
-            level: "success",
-          });
-          window.setTimeout(function () { window.location.reload(); }, 900);
-        } else if (Array.isArray(status.errors) && status.errors.length > 0) {
-          jeedomUtils.showAlert({ message: status.errors.join("<br>"), level: "warning" });
+      scanPolling = false;
+      if (!root.isConnected) return;
+      if (generation !== scanGeneration) { scheduleScan(500); return; }
+      const wasRunning = scanState.running;
+      renderScan(status);
+      if (wasRunning && !status.running) {
+        if (status.cancelled) {
+          jeedomUtils.showAlert({ message: "{{Découverte arrêtée}}", level: "info" });
+        } else if (Array.isArray(status.errors) && status.errors.length) {
+          const message = document.createElement("div");
+          message.textContent = status.errors.join(" · ");
+          jeedomUtils.showAlert({ message: message.innerHTML, level: "warning" });
         } else {
-          jeedomUtils.showAlert({ message: "{{Découverte terminée, aucun nouvel appareil trouvé}}", level: "info" });
+          const found = Array.isArray(status.found) ? status.found.length : 0;
+          jeedomUtils.showAlert({ message: found + " {{appareil(s) LocalThings découvert(s)}}", level: found ? "success" : "info" });
+          if (found) window.setTimeout(function () { if (root.isConnected) window.location.reload(); }, 900);
         }
       }
+      scheduleScan(status.running ? 1500 : 5000);
+    }, function () { scanPolling = false; scheduleScan(5000); });
+  }
+
+  function scanAction(action, data) {
+    scanBusy = true;
+    scanGeneration++;
+    renderScan(scanState);
+    ajax(action, data, function (status) {
+      scanBusy = false;
+      renderScan(status);
+      scheduleScan(250);
+    }, function () {
+      scanBusy = false;
+      renderScan(scanState);
+      scheduleScan(250);
     });
   }
+
+  // Reprend le suivi après rechargement, et détecte les lancements dans un autre onglet.
+  pollScan();
 
   root.addEventListener("click", function (event) {
     const scan = event.target.closest("#bt_scanLocalthings");
     if (scan) {
-      ajax("scan", {}, function () {
-        jeedomUtils.showAlert({ message: "{{Découverte LocalThings démarrée}}", level: "success" });
-        pollScan();
-      });
+      if (scanBusy) return;
+      scanBusy = true;
+      scanGeneration++;
+      renderScan(scanState);
+      ajax("scanStatus", {}, function (status) {
+        scanBusy = false;
+        renderScan(status);
+        if (status.running) {
+          if (status.stop_requested) return;
+          scanBusy = true;
+          renderScan(status);
+          jeeDialog.confirm("{{Une découverte est déjà en cours. Voulez-vous l’arrêter ?}}", function (confirmed) {
+            scanBusy = false;
+            renderScan(scanState);
+            if (confirmed) scanAction("stopScan", { job_id: status.job_id });
+          });
+        } else {
+          scanAction("scan", {});
+        }
+      }, function () { scanBusy = false; renderScan(scanState); scheduleScan(1500); });
       return;
     }
 
     const probe = event.target.closest("#bt_probeLocalthings");
     if (probe) {
+      if (scanBusy || scanState.running) return;
       const host = document.getElementById("in_localthings_host")?.value.trim() || "";
       if (!host) {
         jeedomUtils.showAlert({ message: "{{Saisissez une adresse IPv4}}", level: "warning" });
         return;
       }
-      probe.disabled = true;
-      ajax("probe", { host: host }, function () {
-        jeedomUtils.showAlert({ message: "{{Analyse de l’adresse démarrée}}", level: "success" });
-        pollScan();
-      });
-      window.setTimeout(function () { probe.disabled = false; }, 5000);
+      scanAction("probe", { host: host });
       return;
     }
 

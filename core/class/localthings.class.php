@@ -20,7 +20,7 @@ require_once __DIR__ . '/LocalThingsClient.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.10';
+    public static $_pluginVersion = '0.4.11';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -46,20 +46,6 @@ class localthings extends eqLogic
         }
         @chmod($path, 0700);
         return $path;
-    }
-
-    /**
-     * Retourne le fichier temporaire partagé avec la découverte asynchrone.
-     *
-     * @return string
-     */
-    private static function statusPath()
-    {
-        $directory = jeedom::getTmpFolder(__CLASS__);
-        if (!is_dir($directory)) {
-            mkdir($directory, 0700, true);
-        }
-        return $directory . '/discovery-status.json';
     }
 
     /**
@@ -161,7 +147,6 @@ class localthings extends eqLogic
         $networks = self::configuredNetworks();
         log::add(__CLASS__, 'info', sprintf(__('[Discovery] Découverte réseau demandée : %s', __FILE__), implode(', ', $networks)));
         $status = LocalThingsDiscovery::start(
-            self::statusPath(),
             self::resourcePath() . '/discover.php',
             $networks,
             array(),
@@ -182,7 +167,6 @@ class localthings extends eqLogic
         self::assertCertificates();
         log::add(__CLASS__, 'info', sprintf(__('[Discovery] Ajout manuel demandé pour %s', __FILE__), trim((string) $host)));
         $status = LocalThingsDiscovery::start(
-            self::statusPath(),
             self::resourcePath() . '/discover.php',
             array(),
             array((string) $host),
@@ -199,7 +183,17 @@ class localthings extends eqLogic
      */
     public static function scanStatus()
     {
-        return LocalThingsDiscovery::readStatus(self::statusPath());
+        return LocalThingsDiscovery::readStatus();
+    }
+
+    /** Demande l'arrêt de la découverte identifiée par l'interface. */
+    public static function stopDiscovery($jobId)
+    {
+        $status = LocalThingsDiscovery::stop($jobId);
+        if (!empty($status['stop_requested'])) {
+            log::add(__CLASS__, 'info', '[Discovery] Arrêt demandé depuis Jeedom');
+        }
+        return $status;
     }
 
     /**
@@ -1150,6 +1144,25 @@ class localthings extends eqLogic
      * @return string HTML du widget.
      */
     public function toHtml($_version = 'dashboard')
+    {
+        try {
+            return $this->renderDeviceWidget($_version);
+        } catch (Throwable $error) {
+            log::add(__CLASS__, 'error', '[Widget] équipement=' . $this->getId()
+                . ' ; ' . get_class($error) . ' : ' . $error->getMessage()
+                . ' ; ' . basename($error->getFile()) . ':' . $error->getLine());
+            // Une erreur de commande ne doit pas interrompre tous les widgets
+            // demandés dans un même appel eqLogic.ajax.php.
+            return '<div class="eqLogic-widget" data-eqLogic_id="' . (int) $this->getId() . '">'
+                . '<strong>' . htmlspecialchars($this->getName(), ENT_QUOTES, 'UTF-8') . '</strong>'
+                . '<p class="text-danger">'
+                . htmlspecialchars(__('Affichage indisponible. Consultez le journal localthings.', __FILE__), ENT_QUOTES, 'UTF-8')
+                . '</p></div>';
+        }
+    }
+
+    /** Construit le widget sans effectuer de requête réseau vers l'appareil. */
+    private function renderDeviceWidget($_version)
     {
         if ((int) $this->getDisplay('widgetTmpl', 0) !== 1) {
             return parent::toHtml($_version);
