@@ -67,10 +67,14 @@ depuis un autre port. Aucune commande à saisir et aucun outil supplémentaire
 à installer.
 
 Le relais est réservé au port `5684`. Les ports `49152-49160` utilisent le
-transport OpenSSL direct. La découverte réseau attend jusqu'à 2 secondes par
-négociation, contre 5 secondes pour **Ajouter par IP**, à privilégier si la
-recherche réseau ne trouve pas un appareil lent à répondre. L'adresse en cours
-d'analyse est affichée dans la progression.
+transport OpenSSL direct. La découverte commence par lire les ports annoncés
+par l'appareil sur UDP `5683`, puis sonde les ports candidats en parallèle. Ce
+sondage s'arrête au premier message DTLS, sans renvoyer de cookie ni présenter
+un certificat. Une seule connexion authentifiée est ensuite tentée, avec un
+délai de 2 secondes en découverte réseau ou 5 secondes pour **Ajouter par IP**.
+Si plusieurs ports répondent sans préférence connue ni port annoncé unique,
+le journal indique une sélection ambiguë. L'adresse en cours d'analyse apparaît
+dans la progression.
 
 Si l'ajout échoue, transmettez le journal **localthings** depuis la configuration
 du plugin. Avec le niveau de log **Info** ou **Debug**, il contient les ports
@@ -83,17 +87,27 @@ aussi accepter les certificats du plugin et exposer les ressources attendues.
 
 Si le diagnostic indique **certificat client refusé par l’appareil (unknown_ca)**,
 la communication atteint l'appareil, mais celui-ci refuse le profil
-d'authentification présenté par Jeedom. Le bilan conserve cette cause même si
-les autres ports ne répondent pas. Relancer la recherche ou désactiver la
+d'authentification présenté par Jeedom. Le bilan conserve cette cause ; le plugin ne
+poursuit pas les tentatives d'authentification sur tous les autres ports. Relancer la recherche ou désactiver la
 vérification du certificat serveur ne résout pas ce refus. La prise en charge
 d'un autre profil d'authentification doit être étudiée pour le modèle concerné.
 
-Après ce refus, le plugin lit automatiquement trois ressources OCF publiques
+En cas d’échec, le plugin lit automatiquement trois ressources OCF publiques
 sur le port `5683`. Les lignes **[OCF public]** du journal indiquent les méthodes
 annoncées, l'état OCF et, si accessibles, le modèle et ses versions. Les lectures
 sont limitées à deux secondes par ressource ; un accès refusé ou une absence de
 réponse sont également signalés. Aucune commande manuelle n'est nécessaire.
 Ce diagnostic ne modifie pas l'association SmartThings et n'extrait aucune clé.
+Les réponses venant d'un autre port UDP sont acceptées après corrélation CoAP ;
+les blocs suivants restent liés au même pair. Le journal indique si l'échec
+survient à la réception, à la corrélation, à l'assemblage ou au décodage.
+
+Le [document OCF-PKI de SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local/blob/main/docs/ocf-pki-laundry.md)
+décrit aussi une authentification OwnerPSK validée sur certains lave-linge.
+L'autorisation préalable propre au modèle n'est pas un parcours public pris en
+charge. LocalThings n'implémente pas ce transfert de propriété ni OwnerPSK :
+la détection de la PAC AE080BXYDGG ne signifie donc pas encore qu'elle peut
+être ajoutée et pilotée. La découverte LocalThings reste limitée à IPv4.
 
 ## Widgets
 
@@ -161,7 +175,8 @@ sont de 1 minute en ligne et de 5 minutes hors ligne.
 
 ## Compatibilité
 
-Les appareils doivent exposer un service CoAP-DTLS sur le port UDP `5684` ou
+Les appareils doivent exposer un service CoAP-DTLS sur un port IPv4 annoncé
+par OCF, ou sur le port UDP `5684` ou
 dans la plage `49152-49160`, et accepter l’authentification utilisée par le
 plugin. La présence d’un port ouvert ne garantit pas à elle seule la compatibilité.
 Les générations plus anciennes qui n'exposent que le port

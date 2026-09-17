@@ -19,7 +19,15 @@ $logger('info', '[Diagnostic] LocalThings ' . localthings::$_pluginVersion
 
 try {
     LocalThingsDiscovery::run($jobId, function ($host, $exhaustive) {
-        $snapshot = localthings::deviceClient()->probe($host, null, $exhaustive);
+        $knownPorts = array();
+        foreach (eqLogic::byType('localthings') as $equipment) {
+            $port = (int) $equipment->getConfiguration('port', 0);
+            if ($equipment->getConfiguration('host', '') === $host && $port > 0 && $port <= 65535) {
+                $knownPorts[$port] = $port;
+            }
+        }
+        $preferredPort = count($knownPorts) === 1 ? reset($knownPorts) : null;
+        $snapshot = localthings::deviceClient()->probe($host, $preferredPort, $exhaustive);
         LocalThingsDiscovery::checkpoint(true);
         localthings::registerSnapshot($snapshot);
         return $snapshot;

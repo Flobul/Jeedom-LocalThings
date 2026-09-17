@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/LocalThingsOcfDiagnostic.php';
+require_once __DIR__ . '/LocalThingsDtlsProbe.php';
 
 /**
  * Signale une commande reçue par l'appareil mais refusée ou non appliquée.
@@ -86,89 +87,48 @@ class LocalThingsDeviceClient
      */
     private function probeUnlocked($host, $preferredPort, $exhaustive)
     {
-        $identityStarted = microtime(true);
+        $logger = function ($level, $message) { $this->log($level, $message); };
+        $public = new LocalThingsOcfDiagnostic($host);
+        $advertised = $public->discoverPorts($logger);
+        $ports = self::buildProbeOrder($advertised, $preferredPort, true);
+        $results = LocalThingsDtlsProbe::scan($host, $ports, $this->openssl);
+        foreach ($results as $port => $result) {
+            $this->log('info', '[DTLS probe] port=' . $port . ' ; réponse=' . $result['kind']
+                . (isset($result['alert']) ? ' ; alerte=' . $result['alert'] : '')
+                . ' ; ClientHello initiaux=' . $result['attempts'] . ' ; cookie non renvoyé');
+        }
+        // Une préférence enregistrée ou un unique endpoint annoncé départage les
+        // réponses ; l'ordre d'arrivée des datagrammes ne décide jamais du port.
+        $selectionPreference = $preferredPort;
+        if ($selectionPreference === null && count($advertised) === 1) {
+            $selectionPreference = $advertised[0];
+        }
         try {
-            $this->certificateStore->mintLeaf('host:' . $host);
-            $this->log(
-                'info',
-                sprintf(
-                    __('[Certificate] Identité cliente prête pour %1$s en %2$d ms', __FILE__),
-                    $host,
-                    $this->durationMs($identityStarted)
-                )
-            );
-        } catch (Exception $exception) {
-            $message = __('Préparation du certificat client impossible : ', __FILE__)
-                . $exception->getMessage();
-            $this->log('warning', '[Certificate] ' . $message);
-            throw new RuntimeException($message, 0, $exception);
+            $port = LocalThingsDtlsProbe::select($results, $selectionPreference);
+        } catch (RuntimeException $exception) {
+            $public->inspect($logger);
+            throw $exception;
         }
-
-        $detectedPorts = self::candidatePorts($host);
-        $ports = self::buildProbeOrder($detectedPorts, $preferredPort, $exhaustive);
-        $this->log(
-            'info',
-            sprintf(
-                __('[Discovery] %1$s ports candidats : %2$s; source UDP locale : %3$d', __FILE__),
-                $host,
-                implode(', ', $ports),
-                self::sourcePort($host)
-            )
-        );
-        $lastError = '';
-        $authenticationError = '';
-        foreach ($ports as $port) {
+        $this->log('info', '[Discovery] Service DTLS détecté sur le port ' . $port
+            . ' ; authentification et accès aux ressources à vérifier');
+        // Un seul handshake authentifié, après le sondage sans état. Le même
+        // certificat refusé ne doit pas être présenté à tous les autres ports.
+        $started = microtime(true);
+        try {
             LocalThingsDiscovery::checkpoint();
-            $started = microtime(true);
-            $this->log(
-                $exhaustive ? 'info' : 'debug',
-                sprintf(__('[Discovery] Tentative DTLS %1$s:%2$d', __FILE__), $host, $port)
-            );
-            try {
-                $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : 2.0, true);
-                $this->log(
-                    'info',
-                    sprintf(
-                        __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
-                        $host,
-                        $port,
-                        $this->durationMs($started)
-                    )
-                );
-                return $snapshot;
-            } catch (LocalThingsDiscoveryCancelled $exception) {
-                throw $exception;
-            } catch (Exception $exception) {
-                $lastError = $exception->getMessage();
-                if ($exception instanceof LocalThingsClientCertificateRejected) {
-                    $authenticationError = $lastError;
-                }
-                $this->log(
-                    $exhaustive ? 'info' : 'debug',
-                    sprintf(
-                        __('[Discovery] Échec %1$s:%2$d après %3$d ms : %4$s', __FILE__),
-                        $host,
-                        $port,
-                        $this->durationMs($started),
-                        $lastError
-                    )
-                );
-            }
+            $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : 2.0, true);
+            $this->log('info', sprintf(
+                __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
+                $host, $port, $this->durationMs($started)
+            ));
+            return $snapshot;
+        } catch (LocalThingsDiscoveryCancelled $exception) {
+            throw $exception;
+        } catch (Exception $exception) {
+            $public->inspect($logger);
+            $this->log('warning', '[Discovery] Service détecté, ajout impossible : ' . $exception->getMessage());
+            throw $exception;
         }
-        if ($authenticationError !== '') {
-            (new LocalThingsOcfDiagnostic($host))->inspect(function ($level, $message) {
-                $this->log($level, $message);
-            });
-        }
-        $lastError = $authenticationError !== '' ? $authenticationError : $lastError;
-        $message = sprintf(
-            __('Aucun service LocalThings utilisable sur %1$s (ports essayés : %2$s)', __FILE__),
-            $host,
-            implode(', ', $ports)
-        )
-            . ($lastError !== '' ? ' : ' . $lastError : '');
-        $this->log('warning', '[Discovery] ' . $message);
-        throw new RuntimeException($message);
     }
 
     /**
@@ -569,7 +529,7 @@ class LocalThingsDeviceClient
      */
     private function readSnapshot($host, $port, $handshakeTimeout, $includeIdentity = true, $knownDevice = array())
     {
-        if (!in_array((int) $port, self::PROBE_PORTS, true)) {
+        if ((int) $port < 1 || (int) $port > 65535) {
             throw new InvalidArgumentException(__('Port LocalThings invalide', __FILE__));
         }
         $session = $this->createSession($host, (int) $port);
@@ -844,70 +804,6 @@ class LocalThingsDeviceClient
     }
 
     /**
-     * Classe les ports DTLS susceptibles d'être ouverts sur un hôte.
-     *
-     * @param string $host Adresse IPv4 cible.
-     * @return int[]
-     */
-    private static function candidatePorts($host)
-    {
-        $streams = array();
-        $ports = array();
-        foreach (self::PROBE_PORTS as $port) {
-            $errno = 0;
-            $error = '';
-            $stream = @stream_socket_client(
-                'udp://' . $host . ':' . $port,
-                $errno,
-                $error,
-                0.2,
-                STREAM_CLIENT_CONNECT
-            );
-            if (!is_resource($stream)) {
-                continue;
-            }
-            stream_set_blocking($stream, false);
-            @fwrite($stream, "\0");
-            $streams[(int) $stream] = array('stream' => $stream, 'port' => $port);
-        }
-        $deadline = microtime(true) + 0.35;
-        while (count($streams) > 0 && microtime(true) < $deadline) {
-            $read = array();
-            foreach ($streams as $item) {
-                $read[] = $item['stream'];
-            }
-            $write = null;
-            $except = null;
-            $remaining = max(0, $deadline - microtime(true));
-            $selected = @stream_select(
-                $read,
-                $write,
-                $except,
-                (int) floor($remaining),
-                (int) (($remaining - floor($remaining)) * 1000000)
-            );
-            if ($selected === false || $selected === 0) {
-                break;
-            }
-            foreach ($read as $stream) {
-                $streamId = (int) $stream;
-                @fread($stream, 1);
-                fclose($stream);
-                unset($streams[$streamId]);
-            }
-        }
-        foreach ($streams as $item) {
-            $ports[] = $item['port'];
-            fclose($item['stream']);
-        }
-        $preferred = array(49154, 49155, 5684);
-        return array_values(array_unique(array_merge(
-            $preferred,
-            array_values(array_intersect(self::PROBE_PORTS, $ports))
-        )));
-    }
-
-    /**
      * Construit l'ordre unique des ports à sonder.
      *
      * @param int[] $detectedPorts Ports détectés par UDP.
@@ -918,11 +814,11 @@ class LocalThingsDeviceClient
     public static function buildProbeOrder($detectedPorts, $preferredPort = null, $exhaustive = false)
     {
         $ports = array();
-        if ($preferredPort !== null && in_array((int) $preferredPort, self::PROBE_PORTS, true)) {
+        if ($preferredPort !== null && (int) $preferredPort > 0 && (int) $preferredPort <= 65535) {
             $ports[] = (int) $preferredPort;
         }
         foreach ((array) $detectedPorts as $port) {
-            if (in_array((int) $port, self::PROBE_PORTS, true)) {
+            if ((int) $port > 0 && (int) $port <= 65535) {
                 $ports[] = (int) $port;
             }
         }

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.13
+
+- Découverte des ports DTLS annoncés par `/oic/res` sur UDP `5683`, y compris
+  hors de la plage habituelle. Seules les adresses IPv4 correspondant à l'appareil
+  interrogé sont retenues ; les endpoints IPv6 non pris en charge sont signalés.
+- Correction des lectures OCF publiques lorsque la réponse arrive d'un autre
+  port UDP : corrélation CoAP et maintien du même pair pour les blocs suivants.
+- Sondage parallèle des ports par un ClientHello initial, retransmis à
+  l'identique si nécessaire. Le sondage s'arrête à la première réponse DTLS valide
+  sans renvoyer le cookie ni présenter de certificat client.
+- Authentification limitée au port sélectionné après le sondage. Plusieurs
+  réponses sans préférence connue ni endpoint annoncé unique donnent un résultat
+  ambigu, au lieu de choisir arbitrairement le premier port.
+- Diagnostic distinguant l'absence de réponse, la détection DTLS, le refus du
+  certificat et l'accès aux ressources. Les lectures publiques indiquent leur
+  étape et leurs compteurs, sans exposer les identifiants OCF ou les clés.
+- Le refus `unknown_ca` reste un blocage d'authentification : cette version
+  n'ajoute pas le transfert de propriété OCF ni OwnerPSK, et ne garantit pas
+  encore la prise en charge de la PAC Samsung AE080BXYDGG.
+
 ## 0.4.12
 
 - Après un refus du certificat client (`unknown_ca`), lecture automatique des
