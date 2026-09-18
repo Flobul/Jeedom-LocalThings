@@ -378,6 +378,7 @@
         "Option CoAP tronquée": "Opção CoAP truncada",
         "Option CoAP trop volumineuse": "A opção CoAP é demasiado pesada",
         "Ordre des options CoAP invalide": "Ordem das opções CoAP inválida",
+        "Requête CoAP refusée": "Pedido CoAP recusado",
         "Réponse CoAP supérieure à ": "Resposta CoAP superior a ",
         "Trame CoAP tronquée": "Trama CoAP truncada",
         "Type CBOR inconnu": "Tipo CBOR desconhecido",
