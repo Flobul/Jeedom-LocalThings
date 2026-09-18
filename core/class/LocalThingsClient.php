@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/LocalThingsOcfDiagnostic.php';
 require_once __DIR__ . '/LocalThingsDtlsProbe.php';
+require_once __DIR__ . '/LocalThingsOcfOnboardingDiagnostic.php';
 
 /**
  * Signale une commande reçue par l'appareil mais refusée ou non appliquée.
@@ -126,6 +127,18 @@ class LocalThingsDeviceClient
             throw $exception;
         } catch (Exception $exception) {
             $public->inspect($logger);
+            if ($exception instanceof LocalThingsClientCertificateRejected) {
+                $public->inspectProvisioning($logger);
+                LocalThingsDiscovery::checkpoint(true);
+                $transport = new LocalThingsDtlsClient($this->openssl, $host, $port,
+                    self::sourcePort($host), '', '', '', $this->rootCaPath, null, true);
+                $session = new LocalThingsSession($transport);
+                $diagnostic = LocalThingsOcfOnboardingDiagnostic::inspect($session, $host, $logger);
+                if (!empty($diagnostic['connected'])) {
+                    $this->log('info', '[Discovery] Connexion alternative établie pour le diagnostic ; '
+                        . 'association et pilotage non validés, équipement non créé');
+                }
+            }
             $this->log('warning', '[Discovery] Service détecté, ajout impossible : ' . $exception->getMessage());
             throw $exception;
         }

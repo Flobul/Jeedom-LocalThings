@@ -102,6 +102,23 @@ Les réponses venant d'un autre port UDP sont acceptées après corrélation CoA
 les blocs suivants restent liés au même pair. Le journal indique si l'échec
 survient à la réception, à la corrélation, à l'assemblage ou au décodage.
 
+Depuis la version **0.4.15**, un refus `unknown_ca` déclenche aussi une tentative
+expérimentale **sans certificat client**, tout en vérifiant le certificat serveur.
+Les lignes **[OCF sans certificat]** indiquent si cette connexion réussit, quelles
+lectures sont autorisées et l'état de sécurité obtenu. Les lignes
+**[OCF provisioning]** recherchent les méthodes de confirmation annoncées par
+l'appareil ; le nonce n'est jamais affiché.
+
+Pour tester : mettez le plugin à jour, utilisez **Ajouter par IP** et transmettez
+le journal **localthings** complet, depuis le début jusqu'au bilan de découverte.
+Le niveau **Info** suffit pour ces nouvelles étapes. Aucune commande ni dépendance
+supplémentaire n'est nécessaire. La tentative s'arrête avec la découverte.
+
+Ce mode ne fait que des lectures : aucun reset ni changement de propriétaire.
+Une connexion réussie à cette étape ne suffit pas encore à ajouter l'appareil ;
+le bilan peut donc conserver **0 appareil trouvé**. Les logs permettent de savoir
+si le parcours d'association étudié dans SmartThings est applicable au modèle.
+
 Le [document OCF-PKI de SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local/blob/main/docs/ocf-pki-laundry.md)
 décrit aussi une authentification OwnerPSK validée sur certains lave-linge.
 L'autorisation préalable propre au modèle n'est pas un parcours public pris en

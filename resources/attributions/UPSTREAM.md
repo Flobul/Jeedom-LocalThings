@@ -20,3 +20,10 @@ OCF discovery and stateless DTLS probing reviewed on 2026-09-17 against:
 
 The PHP implementation supports IPv4 public discovery and first-flight probing.
 It does not implement the model-specific ownership authorization, OTM or OwnerPSK.
+
+Local review on 2026-09-18 of a user-provided SmartThings 1.8.47.24 JADX export
+identified the Java provisioning confirmation entry points and the advertised
+`x.com.samsung.provisioninginfo` resource type. Version 0.4.15 implements only
+read-only inspection of the announced resource and a CA-verified DTLS session
+without client identity. No APK, native library, account value or private key
+from that export is included in the plugin.

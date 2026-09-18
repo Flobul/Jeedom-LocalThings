@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.4.15
+
+- Après un refus du certificat client (`unknown_ca`), la découverte tente
+  automatiquement une session DTLS sans identité cliente, avec vérification de
+  la chaîne du certificat serveur et paramètres cryptographiques Samsung.
+- Ce mode expérimental autorise uniquement les lectures GET et les ACK. Le
+  transport refuse les écritures ; il ne modifie pas l'association SmartThings.
+- Recherche des ressources `x.com.samsung.provisioninginfo` annoncées par OCF,
+  sur le canal public puis, si la connexion réussit, sur le canal sécurisé.
+  Aucun chemin de provisioning propre à un autre modèle n'est imposé.
+- Journalisation des capacités `0x4000` et `0x8000`, de la présence et du format
+  du nonce, de l'autorisation supplémentaire et de l'état OCF. Les valeurs du
+  nonce, les identifiants et les clés ne sont pas journalisés.
+- Étapes, échecs et bilan regroupés dans les logs `[OCF sans certificat]` et
+  `[OCF provisioning]`, avec délais bornés et arrêt par le bouton de découverte.
+- Renforcement de la corrélation des réponses CoAP sécurisées : une requête
+  renvoyée ou une réponse ne correspondant pas au token/MID attendu est ignorée.
+- Le transfert de propriété et l'installation d'OwnerPSK ne sont pas activés.
+  Une session de diagnostic réussie ne crée pas à elle seule un équipement
+  pilotable. La compatibilité de la PAC AE080BXYDGG reste à valider sur appareil.
+
+## 0.4.14
+
+- Correction du diagnostic OCF public : un code de requête comme `0.01` (GET)
+  n'est plus accepté comme une réponse, même lorsque le token correspond.
+  Les messages concernés ne sont ni acquittés ni utilisés pour fixer le port
+  distant ; l'attente d'une réponse valide continue dans le délai prévu.
+- Ajout de compteurs de messages sans code de réponse et d'échos strictement
+  identiques à la requête envoyée, sans journalisation du contenu des paquets.
+- Validation de la structure des acquittements vides avant leur prise en compte.
+- Cette correction ne résout pas le refus du certificat client `unknown_ca`
+  observé sur la PAC Samsung AE080BXYDGG.
+
 ## 0.4.13
 
 - Découverte des ports DTLS annoncés par `/oic/res` sur UDP `5683`, y compris

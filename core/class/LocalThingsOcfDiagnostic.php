@@ -9,13 +9,21 @@ class LocalThingsOcfDiagnostic
     private $directoryPorts = array();
     private $received = 0;
     private $matched = 0;
+    private $echoes = 0;
+    private $nonResponses = 0;
     private $stage = 'transport';
+    private $session;
+    private $provisioningPaths = array();
 
-    public function __construct($host, $port = 5683)
+    public function __construct($host, $port = 5683, $session = null)
     {
         if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false || $port < 1 || $port > 65535) {
             throw new InvalidArgumentException('Adresse OCF invalide');
         }
+        if ($session !== null && !($session instanceof LocalThingsSession)) {
+            throw new InvalidArgumentException('Session de diagnostic OCF invalide');
+        }
+        $this->session = $session;
         $this->host = $host;
         $this->port = (int) $port;
     }
@@ -42,9 +50,18 @@ class LocalThingsOcfDiagnostic
                 $detail = 'non disponible ; étape=' . $this->stage;
             }
             $logger('info', '[OCF public] GET ' . $path . ' : ' . $detail
-                . ' ; datagrammes reçus=' . $this->received . ', corrélés=' . $this->matched);
+                . $this->counters());
         }
         return $fields;
+    }
+
+    /** Compteurs uniquement : aucune charge utile, adresse ou identité distante. */
+    private function counters()
+    {
+        if ($this->session !== null) { return ' ; réponses CoAP validées=' . $this->matched; }
+        return ' ; datagrammes reçus=' . $this->received . ', corrélés=' . $this->matched
+            . ', messages sans code de réponse=' . $this->nonResponses
+            . ', échos exacts de requête=' . $this->echoes;
     }
 
     /** Découvre les ports annoncés sans suivre une adresse fournie par un autre hôte. */
@@ -58,14 +75,14 @@ class LocalThingsOcfDiagnostic
                 $result = $this->read('/oic/res', $query, $deadline - microtime(true));
                 $logger('info', '[OCF public] GET /oic/res' . ($query ? '?rt=oic.r.doxm' : '')
                     . ' : CoAP ' . LocalThingsCoap::formatCode($result['code'])
-                    . ' ' . json_encode($result['fields']));
+                    . ' ' . json_encode($result['fields']) . $this->counters());
                 $ports = $this->directoryPorts;
                 if ($ports || ($result['code'] >> 5) !== 2) { break; }
             } catch (LocalThingsDiscoveryCancelled $error) {
                 throw $error;
             } catch (Throwable $error) {
                 $logger('info', '[OCF public] GET /oic/res : non disponible ; étape=' . $this->stage
-                    . ' ; datagrammes reçus=' . $this->received . ', corrélés=' . $this->matched);
+                    . $this->counters());
                 break;
             }
         }
@@ -75,15 +92,35 @@ class LocalThingsOcfDiagnostic
     /** GET uniquement, réponse corrélée, Block2 borné et délai total plafonné à trois secondes. */
     public function read($path, $query = array(), $timeout = 2.0)
     {
-        if (!in_array($path, self::PATHS, true)) {
+        if (!in_array($path, self::PATHS, true) && !in_array($path, $this->provisioningPaths, true)) {
             throw new InvalidArgumentException('Ressource de diagnostic non autorisée');
         }
-        if ($query && ($path !== '/oic/res' || $query !== array('rt=oic.r.doxm'))) {
+        if ($query && ($path !== '/oic/res' || !in_array($query, array(array('rt=oic.r.doxm'), array('rt=x.com.samsung.provisioninginfo')), true))) {
             throw new InvalidArgumentException('Filtre OCF non autorisé');
         }
-        $this->received = $this->matched = 0;
+        $this->received = $this->matched = $this->echoes = $this->nonResponses = 0;
         $this->stage = 'transport';
         $this->directoryPorts = array();
+        if ($this->session !== null) {
+            $this->stage = 'lecture CoAP sécurisée';
+            list($code, $payload) = $this->session->get($path, $timeout, $query);
+            if (!in_array($code >> 5, array(2, 4, 5), true)) {
+                throw new RuntimeException('Code CoAP sans réponse valide');
+            }
+            $this->matched = 1;
+            if (($code >> 5) !== 2) { return array('code' => $code, 'fields' => array()); }
+            $this->stage = 'décodage';
+            if (strlen($payload) > 65536) { throw new RuntimeException('Réponse OCF trop volumineuse'); }
+            $consumed = 0;
+            $decoded = null;
+            try {
+                $candidate = LocalThingsCbor::decode($payload, $consumed);
+                if ($consumed === strlen($payload)) { $decoded = $candidate; }
+            } catch (Throwable $error) { /* Un serveur peut aussi proposer JSON. */ }
+            if (!is_array($decoded)) { $decoded = json_decode($payload, true, 32); }
+            if (!is_array($decoded)) { throw new RuntimeException('Contenu OCF invalide'); }
+            return array('code' => $code, 'fields' => $this->summarize($path, $decoded));
+        }
         $socket = @stream_socket_server('udp://0.0.0.0:0', $errno, $error, STREAM_SERVER_BIND);
         $target = $this->host . ':' . $this->port;
         $pinned = null;
@@ -135,13 +172,21 @@ class LocalThingsOcfDiagnostic
                     } catch (Throwable $error) {
                         continue;
                     }
-                    if ($peer === $target && $response['message_id'] === $mid && $response['code'] === 0) {
+                    if ($peer === $target && $response['message_id'] === $mid && $response['code'] === 0
+                        && $response['token'] === '' && !$response['options'] && $response['payload'] === '') {
                         if ($response['type'] === LocalThingsCoap::TYPE_RST) {
                             throw new RuntimeException('Requête CoAP refusée');
                         }
                         if ($response['type'] === LocalThingsCoap::TYPE_ACK) {
                             $acknowledged = true;
                         }
+                        continue;
+                    }
+                    // Un GET renvoyé (même MID/token) n'est pas une réponse.
+                    // Ne pas l'acquitter, épingler son port ou arrêter l'attente.
+                    if (!in_array($response['code'] >> 5, array(2, 4, 5), true)) {
+                        $this->nonResponses++;
+                        if (hash_equals($request, $bytes)) { $this->echoes++; }
                         continue;
                     }
                     if (!hash_equals($token, $response['token']) || $response['type'] === LocalThingsCoap::TYPE_RST
@@ -199,11 +244,7 @@ class LocalThingsOcfDiagnostic
                     if (!is_array($decoded) || ($format !== 50 && $consumed !== strlen($payload))) {
                         throw new RuntimeException('Contenu OCF invalide');
                     }
-                    if ($path === '/oic/res') {
-                        $summary = $this->directory($decoded);
-                    } else {
-                        $summary = self::safeFields($path, $decoded);
-                    }
+                    $summary = $this->summarize($path, $decoded);
                     return array('code' => $packet['code'], 'fields' => $summary);
                 }
                 if (strlen($packet['payload']) !== (1 << ($szx + 4))) {
@@ -214,6 +255,47 @@ class LocalThingsOcfDiagnostic
         } finally {
             fclose($socket);
         }
+    }
+
+    /** Ne lit que les ressources de provisioning réellement annoncées par la cible. */
+    public function inspectProvisioning(callable $logger)
+    {
+        $result = array();
+        if (!$this->provisioningPaths) {
+            try {
+                $directory = $this->read('/oic/res', array('rt=x.com.samsung.provisioninginfo'), 3.0);
+                $logger('info', '[OCF provisioning] répertoire filtré : CoAP '
+                    . LocalThingsCoap::formatCode($directory['code']) . ' ' . json_encode($directory['fields']) . $this->counters());
+            } catch (LocalThingsDiscoveryCancelled $error) {
+                throw $error;
+            } catch (Throwable $error) {
+                $logger('info', '[OCF provisioning] répertoire indisponible ; étape=' . $this->stage . $this->counters());
+            }
+        }
+        foreach ($this->provisioningPaths as $index => $path) {
+            LocalThingsDiscovery::checkpoint(true);
+            try {
+                $response = $this->read($path);
+                $result[] = $response['fields'];
+                $detail = 'CoAP ' . LocalThingsCoap::formatCode($response['code']) . ' ' . json_encode($response['fields']);
+            } catch (LocalThingsDiscoveryCancelled $error) {
+                throw $error;
+            } catch (Throwable $error) {
+                $detail = 'non disponible ; étape=' . $this->stage;
+            }
+            // L'URI annoncée peut contenir un identifiant : journaliser son rang.
+            $logger('info', '[OCF provisioning] ressource #' . ($index + 1) . ' : ' . $detail . $this->counters());
+        }
+        if (!$this->provisioningPaths) {
+            $logger('info', '[OCF provisioning] aucune ressource de provisioning annoncée et exploitable');
+        }
+        return $result;
+    }
+
+    private function summarize($path, $decoded)
+    {
+        if ($path === '/oic/res') { return $this->directory($decoded); }
+        return self::safeFields(in_array($path, $this->provisioningPaths, true) ? '@provisioning' : $path, $decoded);
     }
 
     /** Résumé borné du répertoire ; les URI et UUID ne quittent pas cette méthode. */
@@ -233,6 +315,16 @@ class LocalThingsOcfDiagnostic
         $ports = array();
         $ipv6 = 0;
         foreach ($links as $link) {
+            $types = $link['rt'] ?? array();
+            $types = is_string($types) ? array($types) : $types;
+            $href = $link['href'] ?? '';
+            if (is_array($types) && in_array('x.com.samsung.provisioninginfo', $types, true)
+                && is_string($href) && strlen($href) <= 160
+                && preg_match('~^/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$~D', $href)
+                && count($this->provisioningPaths) < 2 && !in_array($href, self::PATHS, true)
+                && !in_array($href, $this->provisioningPaths, true)) {
+                $this->provisioningPaths[] = $href;
+            }
             foreach (array_slice(is_array($link['eps'] ?? null) ? $link['eps'] : array(), 0, 32) as $endpoint) {
                 $uri = is_array($endpoint) ? ($endpoint['ep'] ?? '') : '';
                 if (!is_string($uri) || strlen($uri) > 512) { continue; }
@@ -254,7 +346,8 @@ class LocalThingsOcfDiagnostic
         }
         $this->directoryPorts = array_slice(array_values(array_unique($ports)), 0, 8);
         return array('ressources' => count($links), 'ports_dtls' => $this->directoryPorts,
-            'endpoints_ipv6_non_pris_en_charge' => $ipv6);
+            'endpoints_ipv6_non_pris_en_charge' => $ipv6,
+            'ressources_provisioning' => count($this->provisioningPaths));
     }
 
     /** Liste fermée de champs : aucun UUID, propriétaire, nonce, numéro de série ou credential. */
@@ -264,6 +357,21 @@ class LocalThingsOcfDiagnostic
             return array();
         }
         $fields = array();
+        if ($path === '@provisioning') {
+            $prefix = 'x.com.samsung.provisioning.';
+            $mask = $data[$prefix . 'otmsupportfeature'] ?? null;
+            if (is_int($mask) && $mask >= 0 && $mask <= 0x7fffffff) {
+                $fields['otm_support_mask'] = $mask;
+                $fields['confirmation_serie_0x4000'] = ($mask & 0x4000) !== 0;
+                $fields['confirmation_reset_0x8000'] = ($mask & 0x8000) !== 0;
+            }
+            $additional = $data[$prefix . 'additionalauthrequired'] ?? null;
+            if (is_bool($additional)) { $fields['autorisation_supplementaire'] = $additional; }
+            $nonce = $data[$prefix . 'nonce'] ?? null;
+            $fields['nonce_present'] = is_string($nonce) && strlen($nonce) > 0;
+            $fields['nonce_hex_4_octets'] = is_string($nonce) && preg_match('/^[a-fA-F0-9]{8}$/D', $nonce) === 1;
+            return $fields;
+        }
         $allowed = $path === '/oic/sec/doxm' ? array('oxms', 'oxmsel', 'sct', 'owned')
             : ($path === '/oic/sec/pstat' ? array('isop', 'cm', 'tm', 'om', 'sm') : array());
         foreach ($allowed as $key) {

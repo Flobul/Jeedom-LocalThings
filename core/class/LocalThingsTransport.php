@@ -894,6 +894,7 @@ class LocalThingsDtlsClient
     private $closed = false;
     private $logger;
     private $relay;
+    private $serverAuthReadOnly;
 
     /**
      * Prépare un transport DTLS piloté par le binaire OpenSSL.
@@ -907,6 +908,7 @@ class LocalThingsDtlsClient
      * @param string $keyPath Clé privée cliente.
      * @param string $rootCaPath Autorité racine de confiance.
      * @param callable|null $logger Journaliseur facultatif.
+     * @param bool $serverAuthReadOnly Diagnostic sans identité cliente, GET/ACK uniquement.
      */
     public function __construct(
         $openssl,
@@ -917,8 +919,10 @@ class LocalThingsDtlsClient
         $certificateChainPath,
         $keyPath,
         $rootCaPath,
-        $logger = null
+        $logger = null,
+        $serverAuthReadOnly = false
     ) {
+        $this->serverAuthReadOnly = (bool) $serverAuthReadOnly;
         $this->openssl = (string) $openssl;
         $this->host = (string) $host;
         $this->port = (int) $port;
@@ -965,12 +969,6 @@ class LocalThingsDtlsClient
             $this->relay !== null ? $this->relay->endpoint() : $this->host . ':' . $this->port,
             '-bind',
             $this->relay !== null ? '127.0.0.1:0' : '0.0.0.0:' . $this->localPort,
-            '-cert',
-            $this->certificatePath,
-            '-cert_chain',
-            $this->certificateChainPath,
-            '-key',
-            $this->keyPath,
             '-CAfile',
             $this->rootCaPath,
             '-verify_return_error',
@@ -983,6 +981,15 @@ class LocalThingsDtlsClient
             '-quiet',
             '-ign_eof',
         );
+        if ($this->serverAuthReadOnly) {
+            // Profil de lecture expérimentale Samsung : vérification serveur
+            // maintenue, aucune identité cliente ni modification OCF autorisée.
+            $command = array_merge($command, array('-groups', 'P-256', '-sigalgs',
+                'RSA+SHA256:ECDSA+SHA256:RSA+SHA1:ECDSA+SHA1', '-no_ticket'));
+        } else {
+            $command = array_merge($command, array('-cert', $this->certificatePath,
+                '-cert_chain', $this->certificateChainPath, '-key', $this->keyPath));
+        }
         $descriptor = array(
             0 => array('pipe', 'r'),
             1 => array('pipe', 'w'),
@@ -1064,6 +1071,16 @@ class LocalThingsDtlsClient
             throw new RuntimeException(__('Session DTLS fermée', __FILE__));
         }
         $data = (string) $data;
+        if ($this->serverAuthReadOnly) {
+            $packet = LocalThingsCoap::parse($data);
+            $get = $packet['code'] === LocalThingsCoap::METHOD_GET
+                && in_array($packet['type'], array(LocalThingsCoap::TYPE_CON, LocalThingsCoap::TYPE_NON), true)
+                && $packet['payload'] === '';
+            $ack = $packet['type'] === LocalThingsCoap::TYPE_ACK && $packet['code'] === 0 && strlen($data) === 4;
+            if (!$get && !$ack) {
+                throw new LogicException('Le diagnostic DTLS sans certificat client autorise uniquement GET et ACK');
+            }
+        }
         $offset = 0;
         $length = strlen($data);
         $sentBefore = $this->relay !== null ? $this->relay->sentCount() : 0;
@@ -1342,7 +1359,12 @@ class LocalThingsDtlsClient
         if ($this->port < 1 || $this->port > 65535 || $this->localPort < 1024 || $this->localPort > 65535) {
             throw new InvalidArgumentException(__('Port DTLS invalide', __FILE__));
         }
-        foreach (array($this->certificatePath, $this->certificateChainPath, $this->keyPath, $this->rootCaPath) as $path) {
+        if ($this->serverAuthReadOnly && ($this->certificatePath !== '' || $this->certificateChainPath !== '' || $this->keyPath !== '')) {
+            throw new InvalidArgumentException('Une identité cliente ne peut pas être fournie au diagnostic sans certificat');
+        }
+        $paths = $this->serverAuthReadOnly ? array($this->rootCaPath)
+            : array($this->certificatePath, $this->certificateChainPath, $this->keyPath, $this->rootCaPath);
+        foreach ($paths as $path) {
             if (!is_file($path) || !is_readable($path)) {
                 throw new InvalidArgumentException(__('Fichier DTLS illisible : ', __FILE__) . $path);
             }

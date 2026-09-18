@@ -980,25 +980,25 @@ class LocalThingsSession
                 } catch (Exception $exception) {
                     continue;
                 }
-                if ($response['type'] === LocalThingsCoap::TYPE_CON) {
-                    $this->transport->write(
-                        LocalThingsCoap::build(
-                            LocalThingsCoap::TYPE_ACK,
-                            0,
-                            $response['message_id'],
-                            '',
-                            array()
-                        )
-                    );
-                }
-                if (
-                    $response['type'] === LocalThingsCoap::TYPE_ACK
-                    && $response['code'] === 0
-                    && $response['token'] === ''
-                    && $response['payload'] === ''
-                ) {
-                    $attemptDeadline = $deadline;
+                if ($response['message_id'] === $messageId && $response['code'] === 0
+                    && $response['token'] === '' && $response['payload'] === '' && !$response['options']) {
+                    if ($response['type'] === LocalThingsCoap::TYPE_RST) {
+                        throw new RuntimeException(__('Requête CoAP refusée', __FILE__));
+                    }
+                    if ($response['type'] === LocalThingsCoap::TYPE_ACK) {
+                        $attemptDeadline = $deadline;
+                    }
                     continue;
+                }
+                if (!in_array($response['code'] >> 5, array(2, 4, 5), true)
+                    || $response['type'] === LocalThingsCoap::TYPE_RST
+                    || !hash_equals($token, (string) $response['token'])
+                    || ($response['type'] === LocalThingsCoap::TYPE_ACK && $response['message_id'] !== $messageId)) {
+                    continue;
+                }
+                if ($response['type'] === LocalThingsCoap::TYPE_CON) {
+                    $this->transport->write(LocalThingsCoap::build(LocalThingsCoap::TYPE_ACK, 0,
+                        $response['message_id'], '', array()));
                 }
                 if (
                     hash_equals($token, (string) $response['token'])
