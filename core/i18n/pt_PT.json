@@ -532,6 +532,7 @@
         "Configurez d’abord les certificats LocalThings": "Configure primeiro os certificados LocalThings",
         "Configurez les certificats dans la page du plugin": "Configure os certificados na página do plugin",
         "Connecté": "Conectado",
+        "Connexion standard": "Ligação padrão",
         "Création du répertoire de données impossible": "Não foi possível criar o diretório de dados",
         "Démarrez le démon du plugin": "Inicie o serviço do plugin",
         "Démon arrêté": "Demónio detido",
@@ -543,6 +544,7 @@
         "Identifiant d’appareil invalide": "Identificador do dispositivo inválido",
         "Installez PHP CLI": "Instale o PHP CLI",
         "Interpréteur PHP CLI": "Interpretador PHP CLI",
+        "Lecture seule — pilotage non validé": "Apenas leitura — controlo não validado",
         "L’appareil est hors ligne. Rafraîchissez son état avant d’envoyer une commande.": "O dispositivo está offline. Atualize o seu estado antes de enviar um comando.",
         "Nouvel appareil local découvert : ": "Foi detetado um novo dispositivo local: ",
         "OpenSSL avec prise en charge DTLS est introuvable": "Não foi possível encontrar o OpenSSL com suporte a DTLS",
@@ -650,6 +652,7 @@
     },
     "plugins\/localthings\/desktop\/php\/localthings.php": {
         "401 - Accès non autorisé": "401 - Acesso não autorizado",
+        "Accès à l’appareil": "Acesso ao dispositivo",
         "Actions": "Ações",
         "Activer": "Ativar",
         "Actualiser": "Atualizar",
