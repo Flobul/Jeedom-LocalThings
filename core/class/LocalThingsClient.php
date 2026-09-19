@@ -274,6 +274,11 @@ class LocalThingsDeviceClient
                     : array_merge((array) ($resources[$href] ?? array()), $write['body']);
             }
             $resources[$href] = array_merge((array) ($resources[$href] ?? array()), $representation);
+            if ($readOnly) {
+                $resources = array_filter($resources, function ($rep, $href) {
+                    return self::isBusinessResource($href, $rep);
+                }, ARRAY_FILTER_USE_BOTH);
+            }
             $mapped = $this->mapper->map($resources);
             return array(
                 'success' => true,
@@ -595,7 +600,7 @@ class LocalThingsDeviceClient
             if ($deviceType === 'unknown' && !empty($knownDevice['device_type'])) {
                 $deviceType = (string) $knownDevice['device_type'];
             }
-            $model = trim((string) ($identity['model'] ?? ''));
+            $model = trim(explode('|', (string) ($identity['model'] ?? ''), 2)[0]);
             if ($model === '') {
                 $model = explode('|', (string) ($information['x.com.samsung.da.modelNum'] ?? ''), 2)[0];
             }
@@ -612,6 +617,11 @@ class LocalThingsDeviceClient
             if ($name === '') {
                 $name = 'Samsung ' . str_replace('_', ' ', $deviceType);
             }
+            if ($readOnly) {
+                $resources = array_filter($resources, function ($rep, $href) {
+                    return self::isBusinessResource($href, $rep);
+                }, ARRAY_FILTER_USE_BOTH);
+            }
             $mapped = $this->mapper->map($resources);
             if ($readOnly) {
                 foreach ($mapped['entities'] as &$entity) { $entity['actions'] = array(); }
@@ -621,7 +631,7 @@ class LocalThingsDeviceClient
                 }, ARRAY_FILTER_USE_KEY);
                 $business = $this->mapper->map($businessResources);
                 if (!$business['entities']) {
-                    throw new RuntimeException('Ressources reçues mais aucun état métier reconnu ; équipement non créé');
+                    throw new RuntimeException('Session DTLS établie mais aucun état de fonctionnement reconnu ; les informations réseau et de maintenance ne suffisent pas');
                 }
                 $this->log('info', '[OCF lecture seule] ressources=' . count($resources)
                     . ' ; états reconnus=' . count($mapped['states']) . ' ; actions désactivées');
@@ -718,6 +728,9 @@ class LocalThingsDeviceClient
     {
         $resources = array();
         $stubs = array();
+        $denied = 0;
+        $timeouts = 0;
+        $skipped = 0;
         $deadline = microtime(true) + 25.0;
         foreach (array('/device/0', '/oic/res') as $directoryPath) {
             LocalThingsDiscovery::checkpoint();
@@ -725,6 +738,7 @@ class LocalThingsDeviceClient
                 list($code, $payload) = $session->get($directoryPath, 4.0);
                 $this->log('info', '[OCF lecture seule] GET ' . $directoryPath . ' : CoAP '
                     . LocalThingsCoap::formatCode($code) . ' ; octets=' . strlen($payload));
+                if ($code === 129 || $code === 131) { $denied++; }
                 if (($code >> 5) !== 2 || strlen($payload) > 262144) { continue; }
                 $decoded = LocalThingsCbor::decode($payload);
                 if (!is_array($decoded)) { continue; }
@@ -739,10 +753,15 @@ class LocalThingsDeviceClient
                             || !preg_match('~^/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$~D', $href)
                             || strpos($href, '/oic/') === 0 || $href === '/device/0') { continue; }
                         $types = $link['rt'] ?? array();
-                        if (in_array('x.com.samsung.provisioninginfo', (array) $types, true)) { continue; }
+                        if (in_array('x.com.samsung.provisioninginfo', (array) $types, true)
+                            || self::isTechnicalResource($href, array('rt' => $types))) {
+                            $skipped++;
+                            continue;
+                        }
                         if (isset($link['rep']) && is_array($link['rep']) && $link['rep']) {
                             $resources[$href] = $link['rep'];
-                        } else { $stubs[$href] = true; }
+                            if (!isset($resources[$href]['rt'])) { $resources[$href]['rt'] = $types; }
+                        } else { $stubs[$href] = array('rt' => $types); }
                     }
                 }
                 if ($resources && !$stubs) { break; }
@@ -753,30 +772,78 @@ class LocalThingsDeviceClient
                     . LocalThingsOcfOnboardingDiagnostic::failureKind($error));
             }
         }
+        // Read likely appliance states first, rather than the first 40 directory entries.
+        uksort($stubs, function ($left, $right) use ($stubs) {
+            return (int) self::isBusinessResource($right, $stubs[$right])
+                <=> (int) self::isBusinessResource($left, $stubs[$left]);
+        });
         $index = 0;
+        $attempted = array();
         foreach ($stubs as $href => $unused) {
             if (isset($resources[$href])) { continue; }
-            if ($index >= 40 || microtime(true) >= $deadline) { break; }
+            if ($index >= 96 || microtime(true) >= $deadline) { break; }
             LocalThingsDiscovery::checkpoint();
             $index++;
+            $attempted[$href] = true;
             try {
                 list($code, $payload) = $session->get($href, min(1.5, max(1, $deadline - microtime(true))));
-                $this->log('info', '[OCF lecture seule] ressource #' . $index . ' : CoAP '
+                $this->log('debug', '[OCF lecture seule] ressource #' . $index
+                    . ' ; référence=' . substr(hash('sha256', $href), 0, 12)
+                    . ' ; types=' . self::resourceTypeSummary($unused['rt'] ?? array()) . ' : CoAP '
                     . LocalThingsCoap::formatCode($code) . ' ; octets=' . strlen($payload));
+                if ($code === 129 || $code === 131) { $denied++; }
                 if (($code >> 5) === 2 && strlen($payload) <= 65536) {
                     $rep = LocalThingsCbor::decode($payload);
-                    if (is_array($rep) && $rep) { $resources[$href] = $rep; }
+                    if (is_array($rep) && $rep) {
+                        if (!isset($rep['rt'])) { $rep['rt'] = $unused['rt'] ?? array(); }
+                        $resources[$href] = $rep;
+                    }
                 }
             } catch (LocalThingsDiscoveryCancelled $error) {
                 throw $error;
             } catch (Throwable $error) {
-                $this->log('info', '[OCF lecture seule] ressource #' . $index . ' non lisible');
+                $timeouts++;
+                $this->log('debug', '[OCF lecture seule] ressource #' . $index . ' non lisible ; '
+                    . LocalThingsOcfOnboardingDiagnostic::failureKind($error));
             }
         }
         $this->log('info', '[OCF lecture seule] représentations reçues=' . count($resources)
-            . ' ; ressources individuelles testées=' . $index);
-        if (!$resources) { throw new RuntimeException('Aucune représentation métier accessible en lecture seule'); }
+            . ' ; ressources individuelles testées=' . $index
+            . ' ; refus d’accès=' . $denied . ' ; lectures en échec=' . $timeouts
+            . ' ; ressources techniques ignorées=' . $skipped
+            . ' ; individuelles non testées=' . count(array_diff_key($stubs, $resources, $attempted))
+            );
+        if (!$resources) {
+            throw new RuntimeException($denied > 0
+                ? 'Appareil joignable mais lecture non autorisée (CoAP 4.01/4.03) ; aucune donnée de fonctionnement accessible'
+                : 'Aucune représentation métier accessible en lecture seule');
+        }
         return $resources;
+    }
+
+    /** Les informations réseau ne prouvent pas l’accès aux fonctions de l’appareil. */
+    private static function isTechnicalResource($href, $rep)
+    {
+        $metadata = $href . ' ' . implode(' ', (array) ($rep['rt'] ?? array())) . ' ' . implode(' ', array_keys($rep));
+        return (bool) preg_match('/(?:accesspoint|selfhealing|provisioning|credential|wifi|ssid|information|network|firmware|certificate)/i', $metadata);
+    }
+
+    private static function isBusinessResource($href, $rep)
+    {
+        if (!is_array($rep) || self::isTechnicalResource($href, $rep)) { return false; }
+        $metadata = $href . ' ' . implode(' ', (array) ($rep['rt'] ?? array())) . ' ' . implode(' ', array_keys($rep));
+        return (bool) preg_match('/(?:power|temperature|thermostat|setpoint|heating|cooling|operation|fanspeed|airflow|humidity|consumption|energy|mode(?![a-z])|switch|contact|door|lock|alarm|remainingtime|progress)/i', $metadata);
+    }
+
+    private static function resourceTypeSummary($types)
+    {
+        $safe = array();
+        foreach (array_slice((array) $types, 0, 8) as $type) {
+            if (is_string($type) && strlen($type) <= 90
+                && preg_match('/^(?:oic\.r\.|x\.com\.samsung\.)[a-zA-Z0-9_.-]+$/D', $type)
+                && !preg_match('/[a-f0-9]{12,}/i', $type)) { $safe[] = $type; }
+        }
+        return $safe ? implode(',', $safe) : 'non standard ou absent';
     }
 
     /**

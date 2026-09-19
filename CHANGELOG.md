@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.17
+
+- Correction d’une création abusive en lecture seule : les ressources réseau,
+  points d’accès et auto-maintenance ne suffisent plus à valider un équipement.
+  Une représentation de fonctionnement reconnue est nécessaire.
+- Recherche prioritaire des ressources de fonctionnement annoncées ; limite
+  portée de 40 à 96 lectures individuelles, avec budget temporel de 25 secondes.
+- Bilan des refus CoAP 4.01/4.03, échecs et ressources non testées. Les détails
+  par ressource passent en Debug avec types OCF et références anonymisées,
+  sans corps de réponse ni liste des réseaux Wi-Fi.
+- Le modèle affiché est séparé des métadonnées suffixées par une barre verticale.
+- La PAC AE080BXYDGG accepte DTLS sans certificat client mais refuse encore la
+  majorité des lectures. Le pilotage reste désactivé ; aucune réassociation automatique.
+
 ## 0.4.16
 
 - Après une connexion DTLS sans certificat client réussie, la découverte poursuit

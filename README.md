@@ -265,3 +265,17 @@ est adapté des travaux de [mbillow/localthings](https://github.com/mbillow/loca
 et [QuiteYellow/SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local), sous
 licence MIT ; les textes correspondants sont conservés dans
 `resources/attributions/`.
+
+### PAC Samsung : état de validation
+
+Les essais de la version 0.4.16 ont confirmé une connexion chiffrée à la PAC
+AE080BXYDGG, mais les commandes « Accesspoint », « Items » et « Selfhealing »
+ne représentent pas ses états de chauffage. La version 0.4.17 ne les utilise
+plus pour conclure que l’appareil est pris en charge. Les équipements déjà
+créés sont conservés ; un échec d’accès reste signalé.
+
+Un retour CoAP **4.01** indique un accès non autorisé à la ressource demandée.
+Il reste à établir une autorisation permettant la lecture des états, puis le
+pilotage. Pour poursuivre le diagnostic depuis le plugin, activer **Debug**,
+lancer **Ajouter par IP** et transmettre le journal de cette découverte.
+Les types de ressources et les refus sont journalisés, sans leurs valeurs privées.
