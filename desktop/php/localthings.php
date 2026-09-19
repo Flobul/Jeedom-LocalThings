@@ -172,6 +172,7 @@ $eqLogics = eqLogic::byType($plugin->getId());
                                 'device_id' => __('Identifiant', __FILE__),
                                 'host' => __('Adresse IP', __FILE__),
                                 'port' => __('Port DTLS', __FILE__),
+                                'access_mode' => __('Accès à l’appareil', __FILE__),
                                 'manufacturer' => __('Fabricant', __FILE__),
                                 'model' => __('Modèle', __FILE__),
                                 'device_type' => __('Type', __FILE__),

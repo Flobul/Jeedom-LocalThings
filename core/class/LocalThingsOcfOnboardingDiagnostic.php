@@ -3,7 +3,7 @@
 /** Étudie le parcours Samsung après unknown_ca, sans écrire de ressource OCF. */
 class LocalThingsOcfOnboardingDiagnostic
 {
-    public static function inspect(LocalThingsSession $session, $host, callable $logger)
+    public static function inspect(LocalThingsSession $session, $host, callable $logger, $readSnapshot = null)
     {
         $logger('info', '[OCF sans certificat] début ; identité cliente absente ; vérification CA serveur active ; GET uniquement');
         $connected = false;
@@ -26,7 +26,7 @@ class LocalThingsOcfOnboardingDiagnostic
             $state = 'état de sécurité incomplet';
             if (isset($doxm['owned'], $pstat['isop'])) {
                 if ($doxm['owned'] === true) {
-                    $state = 'appareil déjà associé ; autorisation de réassociation à établir';
+                    $state = 'appareil déjà associé ; lecture des états à vérifier sans réassociation';
                 } elseif ($doxm['owned'] === false && $pstat['isop'] === false) {
                     $state = 'appareil non associé et non opérationnel ; méthode OTM et autorisation à vérifier';
                 } else {
@@ -36,7 +36,12 @@ class LocalThingsOcfOnboardingDiagnostic
             $logger('info', '[OCF sans certificat] bilan : ' . $state
                 . ' ; ressources de provisioning lues=' . count(array_filter($provisioning))
                 . ' ; aucun reset, transfert de propriété ou OwnerPSK effectué');
-            return array('connected' => true, 'security' => $security, 'provisioning' => $provisioning);
+            $result = array('connected' => true, 'security' => $security, 'provisioning' => $provisioning);
+            if (is_callable($readSnapshot)) {
+                $logger('info', '[OCF sans certificat] lecture des états métier avant création en lecture seule');
+                $result['snapshot'] = $readSnapshot($session);
+            }
+            return $result;
         } catch (LocalThingsDiscoveryCancelled $error) {
             throw $error;
         } catch (Throwable $error) {

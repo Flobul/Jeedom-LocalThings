@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.16
+
+- Après une connexion DTLS sans certificat client réussie, la découverte poursuit
+  la lecture des états : `/device/0`, puis les ressources annoncées individuellement
+  si nécessaire, avec délais et nombre de requêtes limités.
+- Création en **lecture seule** lorsqu’au moins un état exploitable est reçu,
+  avec mémorisation du mode de connexion pour les rafraîchissements. La seule
+  lecture du répertoire ou des métadonnées ne suffit pas à créer un équipement.
+- Accès indiqué dans la fiche équipement ; aucune action de pilotage générée
+  dans ce mode. Les anciennes actions sont masquées et leur exécution refusée,
+  sans supprimer les références des scénarios.
+- Logs du nombre de représentations et d’états reçus, des codes CoAP et des
+  échecs de lecture, sans afficher le contenu des réponses métier.
+- Vérification du certificat serveur conservée ; aucun reset, changement
+  d’association ou transfert de propriété. Lecture réelle de la PAC AE080BXYDGG
+  encore à valider avec les prochains logs utilisateur.
+
 ## 0.4.15
 
 - Après un refus du certificat client (`unknown_ca`), la découverte tente

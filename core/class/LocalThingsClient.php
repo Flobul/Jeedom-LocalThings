@@ -16,6 +16,8 @@ class LocalThingsCommandRejectedException extends RuntimeException
  */
 class LocalThingsDeviceClient
 {
+    public const AUTH_READ_ONLY = 'server_certificate_readonly';
+
     public const PROBE_PORTS = array(49154, 49155, 5684, 49152, 49153, 49156, 49157, 49158, 49159, 49160);
 
     // Samsung appliances need a short quiet period after a write. Reading the
@@ -133,10 +135,18 @@ class LocalThingsDeviceClient
                 $transport = new LocalThingsDtlsClient($this->openssl, $host, $port,
                     self::sourcePort($host), '', '', '', $this->rootCaPath, null, true);
                 $session = new LocalThingsSession($transport);
-                $diagnostic = LocalThingsOcfOnboardingDiagnostic::inspect($session, $host, $logger);
+                $diagnostic = LocalThingsOcfOnboardingDiagnostic::inspect($session, $host, $logger,
+                    function ($connectedSession) use ($host, $port) {
+                        return $this->readSnapshot($host, $port, 5.0, true,
+                            array('auth_mode' => self::AUTH_READ_ONLY), $connectedSession);
+                    });
+                if (isset($diagnostic['snapshot'])) {
+                    $this->log('info', '[Discovery] États métier reçus ; création en lecture seule sans réassociation');
+                    return $diagnostic['snapshot'];
+                }
                 if (!empty($diagnostic['connected'])) {
-                    $this->log('info', '[Discovery] Connexion alternative établie pour le diagnostic ; '
-                        . 'association et pilotage non validés, équipement non créé');
+                    throw new RuntimeException('Connexion DTLS sans certificat client réussie, mais aucun état exploitable obtenu ; '
+                        . 'équipement non créé. Consulter les lignes [OCF lecture seule].');
                 }
             }
             $this->log('warning', '[Discovery] Service détecté, ajout impossible : ' . $exception->getMessage());
@@ -540,12 +550,13 @@ class LocalThingsDeviceClient
      * @param array<string,mixed> $knownDevice Métadonnées conservées lors d'un rafraîchissement léger.
      * @return array<string,mixed>
      */
-    private function readSnapshot($host, $port, $handshakeTimeout, $includeIdentity = true, $knownDevice = array())
+    private function readSnapshot($host, $port, $handshakeTimeout, $includeIdentity = true, $knownDevice = array(), $connectedSession = null)
     {
         if ((int) $port < 1 || (int) $port > 65535) {
             throw new InvalidArgumentException(__('Port LocalThings invalide', __FILE__));
         }
-        $session = $this->createSession($host, (int) $port);
+        $readOnly = ($knownDevice['auth_mode'] ?? '') === self::AUTH_READ_ONLY;
+        $session = $connectedSession ?: $this->createSession($host, (int) $port, $readOnly);
         $stage = 'négociation DTLS';
         try {
             $this->log(
@@ -559,7 +570,7 @@ class LocalThingsDeviceClient
             );
             $session->connect($handshakeTimeout);
             $stage = 'lecture CoAP /device/0';
-            $resources = $this->readResources($session);
+            $resources = $readOnly ? $this->readOnlyResources($session) : $this->readResources($session);
             $stage = 'identité et commandes';
             $identity = array();
             if ($includeIdentity) {
@@ -602,6 +613,19 @@ class LocalThingsDeviceClient
                 $name = 'Samsung ' . str_replace('_', ' ', $deviceType);
             }
             $mapped = $this->mapper->map($resources);
+            if ($readOnly) {
+                foreach ($mapped['entities'] as &$entity) { $entity['actions'] = array(); }
+                unset($entity);
+                $businessResources = array_filter($resources, function ($href) {
+                    return strpos($href, '/information/') !== 0;
+                }, ARRAY_FILTER_USE_KEY);
+                $business = $this->mapper->map($businessResources);
+                if (!$business['entities']) {
+                    throw new RuntimeException('Ressources reçues mais aucun état métier reconnu ; équipement non créé');
+                }
+                $this->log('info', '[OCF lecture seule] ressources=' . count($resources)
+                    . ' ; états reconnus=' . count($mapped['states']) . ' ; actions désactivées');
+            }
             $snapshotLog = $includeIdentity
                 ? __('[Discovery] Identité reçue : modèle=%1$s, type=%2$s, série=%3$s, identifiant=%4$s, ressources=%5$d, commandes=%6$d', __FILE__)
                 : __('[Refresh] État reçu : modèle=%1$s, type=%2$s, série=%3$s, identifiant=%4$s, ressources=%5$d, commandes=%6$d', __FILE__);
@@ -622,6 +646,7 @@ class LocalThingsDeviceClient
                     'device_id' => $deviceId,
                     'host' => $host,
                     'port' => (int) $port,
+                    'auth_mode' => $readOnly ? self::AUTH_READ_ONLY : 'certificate',
                     'serial' => $serial,
                     'name' => $name,
                     'manufacturer' => trim((string) (
@@ -688,6 +713,72 @@ class LocalThingsDeviceClient
         return $resources;
     }
 
+    /** Lit les représentations annoncées, avec repli borné si /device/0 ne les agrège pas. */
+    private function readOnlyResources(LocalThingsSession $session)
+    {
+        $resources = array();
+        $stubs = array();
+        $deadline = microtime(true) + 25.0;
+        foreach (array('/device/0', '/oic/res') as $directoryPath) {
+            LocalThingsDiscovery::checkpoint();
+            try {
+                list($code, $payload) = $session->get($directoryPath, 4.0);
+                $this->log('info', '[OCF lecture seule] GET ' . $directoryPath . ' : CoAP '
+                    . LocalThingsCoap::formatCode($code) . ' ; octets=' . strlen($payload));
+                if (($code >> 5) !== 2 || strlen($payload) > 262144) { continue; }
+                $decoded = LocalThingsCbor::decode($payload);
+                if (!is_array($decoded)) { continue; }
+                $entries = isset($decoded['links']) ? $decoded['links'] : $decoded;
+                foreach (array_slice((array) $entries, 0, 128) as $entry) {
+                    if (!is_array($entry)) { continue; }
+                    $links = isset($entry['links']) ? $entry['links'] : array($entry);
+                    foreach ((array) $links as $link) {
+                        if (!is_array($link)) { continue; }
+                        $href = $link['href'] ?? '';
+                        if (!is_string($href) || strlen($href) > 160
+                            || !preg_match('~^/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$~D', $href)
+                            || strpos($href, '/oic/') === 0 || $href === '/device/0') { continue; }
+                        $types = $link['rt'] ?? array();
+                        if (in_array('x.com.samsung.provisioninginfo', (array) $types, true)) { continue; }
+                        if (isset($link['rep']) && is_array($link['rep']) && $link['rep']) {
+                            $resources[$href] = $link['rep'];
+                        } else { $stubs[$href] = true; }
+                    }
+                }
+                if ($resources && !$stubs) { break; }
+            } catch (LocalThingsDiscoveryCancelled $error) {
+                throw $error;
+            } catch (Throwable $error) {
+                $this->log('info', '[OCF lecture seule] répertoire non exploitable : '
+                    . LocalThingsOcfOnboardingDiagnostic::failureKind($error));
+            }
+        }
+        $index = 0;
+        foreach ($stubs as $href => $unused) {
+            if (isset($resources[$href])) { continue; }
+            if ($index >= 40 || microtime(true) >= $deadline) { break; }
+            LocalThingsDiscovery::checkpoint();
+            $index++;
+            try {
+                list($code, $payload) = $session->get($href, min(1.5, max(1, $deadline - microtime(true))));
+                $this->log('info', '[OCF lecture seule] ressource #' . $index . ' : CoAP '
+                    . LocalThingsCoap::formatCode($code) . ' ; octets=' . strlen($payload));
+                if (($code >> 5) === 2 && strlen($payload) <= 65536) {
+                    $rep = LocalThingsCbor::decode($payload);
+                    if (is_array($rep) && $rep) { $resources[$href] = $rep; }
+                }
+            } catch (LocalThingsDiscoveryCancelled $error) {
+                throw $error;
+            } catch (Throwable $error) {
+                $this->log('info', '[OCF lecture seule] ressource #' . $index . ' non lisible');
+            }
+        }
+        $this->log('info', '[OCF lecture seule] représentations reçues=' . count($resources)
+            . ' ; ressources individuelles testées=' . $index);
+        if (!$resources) { throw new RuntimeException('Aucune représentation métier accessible en lecture seule'); }
+        return $resources;
+    }
+
     /**
      * Lit les ressources OCF facultatives décrivant l'appareil.
      *
@@ -730,6 +821,8 @@ class LocalThingsDeviceClient
                 $decoded = LocalThingsCbor::decode($payload);
                 return is_array($decoded) ? $decoded : array();
             }
+        } catch (LocalThingsDiscoveryCancelled $exception) {
+            throw $exception;
         } catch (Exception $exception) {
             // Identity endpoints vary by firmware and are optional.
         }
@@ -767,21 +860,22 @@ class LocalThingsDeviceClient
      * @param int $port Port DTLS.
      * @return LocalThingsSession
      */
-    private function createSession($host, $port)
+    private function createSession($host, $port, $readOnly = false)
     {
-        list($certificatePath, $keyPath) = $this->certificateStore->mintLeaf('host:' . $host);
+        list($certificatePath, $keyPath) = $readOnly ? array('', '') : $this->certificateStore->mintLeaf('host:' . $host);
         $transport = new LocalThingsDtlsClient(
             $this->openssl,
             $host,
             $port,
             self::sourcePort($host),
             $certificatePath,
-            $this->certificateStore->caCertificatePath(),
+            $readOnly ? '' : $this->certificateStore->caCertificatePath(),
             $keyPath,
             $this->rootCaPath,
-            $this->logger
+            $this->logger,
+            $readOnly
         );
-        return new LocalThingsSession($transport, $this->logger);
+        return new LocalThingsSession($transport, $readOnly ? null : $this->logger);
     }
 
     /**

@@ -115,9 +115,15 @@ Le niveau **Info** suffit pour ces nouvelles étapes. Aucune commande ni dépend
 supplémentaire n'est nécessaire. La tentative s'arrête avec la découverte.
 
 Ce mode ne fait que des lectures : aucun reset ni changement de propriétaire.
-Une connexion réussie à cette étape ne suffit pas encore à ajouter l'appareil ;
-le bilan peut donc conserver **0 appareil trouvé**. Les logs permettent de savoir
-si le parcours d'association étudié dans SmartThings est applicable au modèle.
+Depuis **0.4.16**, si cette connexion réussit, le plugin tente aussi de lire les
+états de l’appareil. Lorsqu’il obtient des états exploitables, il crée l’équipement
+**en lecture seule** et conserve ce mode pour les rafraîchissements. La fiche
+équipement indique cet accès ; les commandes de pilotage restent désactivées.
+
+Les lignes **[OCF lecture seule]** indiquent le nombre de ressources lues et
+les réponses obtenues, sans leur contenu. Si seul le répertoire ou les informations
+générales sont accessibles, aucun équipement n’est créé. La lecture réelle de
+la PAC AE080BXYDGG reste à confirmer sur appareil.
 
 Le [document OCF-PKI de SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local/blob/main/docs/ocf-pki-laundry.md)
 décrit aussi une authentification OwnerPSK validée sur certains lave-linge.

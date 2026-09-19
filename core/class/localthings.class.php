@@ -20,7 +20,7 @@ require_once __DIR__ . '/LocalThingsClient.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.15';
+    public static $_pluginVersion = '0.4.16';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -301,6 +301,9 @@ class localthings extends eqLogic
         $eqLogic->setConfiguration('serial', (string) ($device['serial'] ?? ''));
         $eqLogic->setConfiguration('host', (string) ($device['host'] ?? ''));
         $eqLogic->setConfiguration('port', (int) ($device['port'] ?? 0));
+        $eqLogic->setConfiguration('auth_mode', (string) ($device['auth_mode'] ?? 'certificate'));
+        $eqLogic->setConfiguration('access_mode', ($device['auth_mode'] ?? '') === LocalThingsDeviceClient::AUTH_READ_ONLY
+            ? __('Lecture seule — pilotage non validé', __FILE__) : __('Connexion standard', __FILE__));
         $eqLogic->setConfiguration('manufacturer', (string) ($device['manufacturer'] ?? 'Samsung'));
         $eqLogic->setConfiguration('model', (string) ($device['model'] ?? ''));
         $eqLogic->setConfiguration('device_type', (string) ($device['device_type'] ?? 'unknown'));
@@ -633,6 +636,18 @@ class localthings extends eqLogic
                 }
                 $command->save();
             }
+        }
+
+        // Partial reads must preserve existing scenario references. The execute
+        // guard also rejects hidden actions when called from a scenario.
+        if ($eqLogic->getConfiguration('auth_mode', 'certificate') === LocalThingsDeviceClient::AUTH_READ_ONLY) {
+            foreach ($eqLogic->getCmd('action') as $command) {
+                if ((int) $command->getConfiguration('managedByLocalThings', 0) === 1) {
+                    $command->setIsVisible(0);
+                    $command->save();
+                }
+            }
+            return;
         }
 
         foreach ($eqLogic->getCmd('action') as $command) {
@@ -1041,6 +1056,7 @@ class localthings extends eqLogic
         return array(
             'device_id' => (string) $this->getConfiguration('device_id', ''),
             'serial' => (string) $this->getConfiguration('serial', ''),
+            'auth_mode' => (string) $this->getConfiguration('auth_mode', 'certificate'),
             'name' => (string) $this->getName(),
             'manufacturer' => (string) $this->getConfiguration('manufacturer', 'Samsung'),
             'model' => (string) $this->getConfiguration('model', ''),
@@ -1658,6 +1674,9 @@ class localthingsCmd extends cmd
         }
         if ((string) $this->getConfiguration('operation', '') === 'refresh') {
             return $eqLogic->refresh();
+        }
+        if ($eqLogic->getConfiguration('auth_mode', 'certificate') === LocalThingsDeviceClient::AUTH_READ_ONLY) {
+            throw new LocalThingsCommandRejectedException('Cet appareil est connecté en lecture seule ; pilotage non validé');
         }
         $connected = $eqLogic->getCmd('info', 'connected');
         if (!is_object($connected) || (int) $connected->execCmd() !== 1) {
