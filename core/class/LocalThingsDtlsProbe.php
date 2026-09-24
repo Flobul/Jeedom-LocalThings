@@ -93,9 +93,18 @@ class LocalThingsDtlsProbe
                     $port = array_search($socket, $sockets, true);
                     $peer = '';
                     $packet = @stream_socket_recvfrom($socket, 8192, 0, $peer);
-                    if ($packet === false || substr($peer, 0, strrpos($peer, ':')) !== $host) { continue; }
+                    $separator = strrpos($peer, ':');
+                    if ($packet === false || $separator === false
+                        || substr($peer, 0, $separator) !== $host) { continue; }
+                    $responderPort = filter_var(substr($peer, $separator + 1), FILTER_VALIDATE_INT,
+                        array('options' => array('min_range' => 1, 'max_range' => 65535)));
+                    if ($responderPort === false) { continue; }
                     $reply = self::firstReply($packet);
                     if ($reply === null) { continue; }
+                    // Le socket OCF sécurisé de l'appareil peut répondre depuis
+                    // son port éphémère même lorsque 5684 a été ciblé. Le port
+                    // source, et non le port composé, est l'endpoint à joindre.
+                    $reply['responder_port'] = (int) $responderPort;
                     $results[$port] = array_merge($results[$port], $reply);
                     // Ne jamais transmettre cette réponse au processus OpenSSL.
                     fclose($socket); unset($sockets[$port]);
@@ -152,12 +161,25 @@ class LocalThingsDtlsProbe
         return $result;
     }
 
-    /** Choisit uniquement un résultat prouvé et non ambigu, ou la préférence explicite. */
+    /** Endpoints DTLS réels, dédupliqués par port source dans l'ordre du scan. */
+    public static function livePorts($results)
+    {
+        $ports = array();
+        foreach ($results as $result) {
+            if (!in_array($result['kind'] ?? '', array('hello_verify_request', 'server_hello'), true)
+                || !isset($result['responder_port'])) {
+                continue;
+            }
+            $port = (int) $result['responder_port'];
+            if ($port >= 1 && $port <= 65535) { $ports[$port] = $port; }
+        }
+        return array_values($ports);
+    }
+
+    /** Choisit uniquement un port source prouvé et non ambigu, ou la préférence explicite. */
     public static function select($results, $preferred = null)
     {
-        $live = array_keys(array_filter($results, function ($result) {
-            return in_array($result['kind'], array('hello_verify_request', 'server_hello'), true);
-        }));
+        $live = self::livePorts($results);
         if ($preferred !== null && in_array((int) $preferred, $live, true)) { return (int) $preferred; }
         if (count($live) === 1) { return $live[0]; }
         if (count($live) > 1) { throw new RuntimeException('Plusieurs ports DTLS répondent : sélection ambiguë'); }

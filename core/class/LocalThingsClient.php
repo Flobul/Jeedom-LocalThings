@@ -81,12 +81,77 @@ class LocalThingsDeviceClient
     }
 
     /**
+     * Tente la lecture des états métier sur un port DTLS candidat.
+     *
+     * Essaie d'abord la session authentifiée par certificat, puis bascule
+     * en lecture sans certificat client (mode Samsung expérimental) si le
+     * serveur répond `unknown_ca`.
+     *
+     * @param string $host Adresse IPv4 validée.
+     * @param int $port Port DTLS à tester.
+     * @param float $handshakeTimeout Délai de handshake initial.
+     * @param bool $exhaustive Essaie tous les ports connus.
+     * @return array<string,mixed> Instantané complet de l'appareil.
+     * @throws LocalThingsClientCertificateRejected Si le certificat client est refusé.
+     * @throws RuntimeException Si l'état métier n'est pas exploitable.
+     */
+    private function probePort($host, $port, $handshakeTimeout, $exhaustive)
+    {
+        $started = microtime(true);
+        LocalThingsDiscovery::checkpoint();
+        $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : $handshakeTimeout, true);
+        $this->log('info', sprintf(
+            __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
+            $host, $port, $this->durationMs($started)
+        ));
+        return $snapshot;
+    }
+
+    /**
+     * Tente la lecture sans certificat client après un refus `unknown_ca`.
+     *
+     * @param string $host Adresse IPv4 validée.
+     * @param int $port Port DTLS.
+     * @param callable $logger Journaliseur.
+     * @return array<string,mixed> Instantané en lecture seule, ou lève l'exception.
+     */
+    private function probeReadOnlyFallback($host, $port, $logger)
+    {
+        $public = new LocalThingsOcfDiagnostic($host);
+        $public->inspect($logger);
+        $public->inspectProvisioning($logger);
+        LocalThingsDiscovery::checkpoint(true);
+        $transport = new LocalThingsDtlsClient($this->openssl, $host, $port,
+            self::sourcePort($host), '', '', '', $this->rootCaPath, null, true);
+        $session = new LocalThingsSession($transport);
+        $diagnostic = LocalThingsOcfOnboardingDiagnostic::inspect($session, $host, $logger,
+            function ($connectedSession) use ($host, $port) {
+                return $this->readSnapshot($host, $port, 5.0, true,
+                    array('auth_mode' => self::AUTH_READ_ONLY), $connectedSession);
+            });
+        if (isset($diagnostic['snapshot'])) {
+            $this->log('info', '[Discovery] États métier reçus ; création en lecture seule sans réassociation');
+            return $diagnostic['snapshot'];
+        }
+        if (!empty($diagnostic['connected'])) {
+            throw new RuntimeException('Connexion DTLS sans certificat client réussie, mais aucun état exploitable obtenu ; '
+                . 'équipement non créé. Consulter les lignes [OCF lecture seule].');
+        }
+        throw new RuntimeException('Connexion DTLS sans certificat client échouée');
+    }
+
+    /**
      * Exécute la détection après acquisition du verrou propre à l'hôte.
+     *
+     * Lorsque plusieurs ports DTLS répondent sans préférence claire, chaque
+     * port candidat est testé individuellement : lecture authentifiée par
+     * certificat, puis lecture sans certificat client si le serveur répond
+     * `unknown_ca`. Le premier port fournissant des états exploitables est retenu.
      *
      * @param string $host Adresse IPv4 validée.
      * @param int|null $preferredPort Port prioritaire.
      * @param bool $exhaustive Essaie tous les ports connus.
-     * @return array<string,mixed>
+     * @return array<string,mixed> Instantané complet de l'appareil.
      */
     private function probeUnlocked($host, $preferredPort, $exhaustive)
     {
@@ -97,6 +162,7 @@ class LocalThingsDeviceClient
         $results = LocalThingsDtlsProbe::scan($host, $ports, $this->openssl);
         foreach ($results as $port => $result) {
             $this->log('info', '[DTLS probe] port=' . $port . ' ; réponse=' . $result['kind']
+                . (isset($result['responder_port']) ? ' ; port source=' . $result['responder_port'] : '')
                 . (isset($result['alert']) ? ' ; alerte=' . $result['alert'] : '')
                 . ' ; ClientHello initiaux=' . $result['attempts'] . ' ; cookie non renvoyé');
         }
@@ -108,49 +174,70 @@ class LocalThingsDeviceClient
         }
         try {
             $port = LocalThingsDtlsProbe::select($results, $selectionPreference);
-        } catch (RuntimeException $exception) {
             $public->inspect($logger);
-            throw $exception;
-        }
-        $this->log('info', '[Discovery] Service DTLS détecté sur le port ' . $port
-            . ' ; authentification et accès aux ressources à vérifier');
-        // Un seul handshake authentifié, après le sondage sans état. Le même
-        // certificat refusé ne doit pas être présenté à tous les autres ports.
-        $started = microtime(true);
-        try {
-            LocalThingsDiscovery::checkpoint();
-            $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : 2.0, true);
-            $this->log('info', sprintf(
-                __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
-                $host, $port, $this->durationMs($started)
-            ));
-            return $snapshot;
-        } catch (LocalThingsDiscoveryCancelled $exception) {
-            throw $exception;
-        } catch (Exception $exception) {
-            $public->inspect($logger);
-            if ($exception instanceof LocalThingsClientCertificateRejected) {
-                $public->inspectProvisioning($logger);
-                LocalThingsDiscovery::checkpoint(true);
-                $transport = new LocalThingsDtlsClient($this->openssl, $host, $port,
-                    self::sourcePort($host), '', '', '', $this->rootCaPath, null, true);
-                $session = new LocalThingsSession($transport);
-                $diagnostic = LocalThingsOcfOnboardingDiagnostic::inspect($session, $host, $logger,
-                    function ($connectedSession) use ($host, $port) {
-                        return $this->readSnapshot($host, $port, 5.0, true,
-                            array('auth_mode' => self::AUTH_READ_ONLY), $connectedSession);
-                    });
-                if (isset($diagnostic['snapshot'])) {
-                    $this->log('info', '[Discovery] États métier reçus ; création en lecture seule sans réassociation');
-                    return $diagnostic['snapshot'];
+            $this->log('info', '[Discovery] Service DTLS détecté sur le port ' . $port
+                . ' ; authentification et accès aux ressources à vérifier');
+            // Un seul handshake authentifié, après le sondage sans état. Le même
+            // certificat refusé ne doit pas être présenté à tous les autres ports.
+            $started = microtime(true);
+            try {
+                LocalThingsDiscovery::checkpoint();
+                $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : 2.0, true);
+                $this->log('info', sprintf(
+                    __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
+                    $host, $port, $this->durationMs($started)
+                ));
+                return $snapshot;
+            } catch (LocalThingsDiscoveryCancelled $exception) {
+                throw $exception;
+            } catch (Exception $exception) {
+                if ($exception instanceof LocalThingsClientCertificateRejected) {
+                    $snapshot = $this->probeReadOnlyFallback($host, $port, $logger);
+                    return $snapshot;
                 }
-                if (!empty($diagnostic['connected'])) {
-                    throw new RuntimeException('Connexion DTLS sans certificat client réussie, mais aucun état exploitable obtenu ; '
-                        . 'équipement non créé. Consulter les lignes [OCF lecture seule].');
+                $this->log('warning', '[Discovery] Service détecté, ajout impossible : ' . $exception->getMessage());
+                throw $exception;
+            }
+        } catch (RuntimeException $ambiguousException) {
+            // Plusieurs ports DTLS répondent sans préférence : tester chaque
+            // candidat pour déterminer lequel expose des ressources exploitables.
+            $candidatePorts = LocalThingsDtlsProbe::livePorts($results);
+            if ($selectionPreference !== null && in_array((int) $selectionPreference, $candidatePorts, true)) {
+                $candidatePorts = array_merge(
+                    array((int) $selectionPreference),
+                    array_values(array_diff($candidatePorts, array((int) $selectionPreference)))
+                );
+            }
+            $public->inspect($logger);
+            foreach ($candidatePorts as $candidatePort) {
+                $this->log('info', '[Discovery] Test du port DTLS ' . $candidatePort . ' pour ' . $host);
+                try {
+                    $started = microtime(true);
+                    LocalThingsDiscovery::checkpoint();
+                    LocalThingsDiscovery::checkpoint(true);
+                    $snapshot = $this->readSnapshot($host, (int) $candidatePort, 5.0, true);
+                    $this->log('info', sprintf(
+                        __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
+                        $host, $candidatePort, $this->durationMs($started)
+                    ));
+                    return $snapshot;
+                } catch (LocalThingsDiscoveryCancelled $cancelled) {
+                    throw $cancelled;
+                } catch (LocalThingsClientCertificateRejected $certException) {
+                    try {
+                        $snapshot = $this->probeReadOnlyFallback($host, (int) $candidatePort, $logger);
+                        return $snapshot;
+                    } catch (Exception $fallbackException) {
+                        $this->log('warning', '[Discovery] Port ' . $candidatePort
+                            . ' : lecture sans certificat échouée : ' . $fallbackException->getMessage());
+                    }
+                } catch (Exception $portException) {
+                    $this->log('warning', '[Discovery] Port ' . $candidatePort
+                        . ' : ' . $portException->getMessage());
                 }
             }
-            $this->log('warning', '[Discovery] Service détecté, ajout impossible : ' . $exception->getMessage());
-            throw $exception;
+            $this->log('warning', '[Discovery] ' . $host . ' ignoré : ' . $ambiguousException->getMessage());
+            throw $ambiguousException;
         }
     }
 

@@ -20,7 +20,7 @@ require_once __DIR__ . '/LocalThingsClient.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.17';
+    public static $_pluginVersion = '0.4.18';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.18
+
+- Sélection du service DTLS d'après le port source réel de la réponse, conformément
+  au fonctionnement des piles OCF Samsung : une requête adressée à `5684` peut être
+  servie depuis le port éphémère `4915x` de l'appareil.
+- Déduplication des réponses reçues depuis un même endpoint. Un appareil joignable
+  à la fois par `5684` et par son port éphémère n'est plus rejeté à tort comme
+  ambigu ; le sèche-linge, le réfrigérateur et la table de cuisson observés sont
+  ainsi dirigés respectivement vers leur véritable endpoint.
+- Les diagnostics distinguent désormais le port ciblé du **port source** retenu.
+  Une ambiguïté n'est conservée que si plusieurs ports sources distincts répondent.
+- Correction de l'ordre de repli lorsqu'un port préféré doit précéder plusieurs
+  endpoints réellement distincts.
+
 ## 0.4.17
 
 - Correction d’une création abusive en lecture seule : les ressources réseau,

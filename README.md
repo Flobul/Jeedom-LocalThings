@@ -66,15 +66,17 @@ pris en charge et adapte automatiquement la connexion si l'appareil répond
 depuis un autre port. Aucune commande à saisir et aucun outil supplémentaire
 à installer.
 
-Le relais est réservé au port `5684`. Les ports `49152-49160` utilisent le
-transport OpenSSL direct. La découverte commence par lire les ports annoncés
-par l'appareil sur UDP `5683`, puis sonde les ports candidats en parallèle. Ce
+Le relais est réservé au port `5684`. Les ports `49152-49160` et les ports
+dynamiques annoncés utilisent le transport OpenSSL direct. La découverte commence
+par lire les ports annoncés par l'appareil sur UDP `5683`, puis sonde les ports candidats en parallèle. Ce
 sondage s'arrête au premier message DTLS, sans renvoyer de cookie ni présenter
 un certificat. Une seule connexion authentifiée est ensuite tentée, avec un
 délai de 2 secondes en découverte réseau ou 5 secondes pour **Ajouter par IP**.
-Si plusieurs ports répondent sans préférence connue ni port annoncé unique,
-le journal indique une sélection ambiguë. L'adresse en cours d'analyse apparaît
-dans la progression.
+Le plugin ouvre la session sur le port source réel de la réponse : certains
+firmwares répondent depuis leur endpoint éphémère même lorsque la requête vise
+`5684`. Plusieurs chemins menant au même port source sont dédupliqués ; seuls
+plusieurs ports sources réellement distincts restent ambigus. L'adresse en cours
+d'analyse apparaît dans la progression.
 
 Si l'ajout échoue, transmettez le journal **localthings** depuis la configuration
 du plugin. Avec le niveau de log **Info** ou **Debug**, il contient les ports
