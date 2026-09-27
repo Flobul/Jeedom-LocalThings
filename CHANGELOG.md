@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.19
+
+- Un seul essai par endpoint DTLS prouvé : un échec du repli sans certificat
+  ne relance plus le même certificat refusé ni les diagnostics publics.
+- Les lectures CoAP sont espacées entre ressources et retransmises avec le même
+  MID, le même token et les mêmes octets. Les réponses multi-blocs sont vérifiées
+  par ETag ; un refus sur un bloc suivant reste signalé comme tel.
+- La découverte en lecture seule dispose de 240 secondes et peut parcourir
+  jusqu’à 128 ressources, avec 4,5 secondes par lecture permettant une retransmission.
+  Le rafraîchissement courant conserve un budget de 25 secondes.
+- Conservation des informations supplémentaires non sensibles lorsqu’au moins
+  un état de fonctionnement est reconnu ; toutes les commandes restent en lecture seule.
+- Les erreurs distinguent refus, lectures en échec et inventaire partiel.
+  Le diagnostic d’association est conservé après l’échec des lectures et
+  explique le besoin d’une identité autorisée sur les appareils déjà associés.
+- Le parcours d’autorisation constructeur/OwnerPSK décrit pour les WD53
+  ne constitue pas une procédure validée pour la PAC AE080BXYDGG. Aucun
+  transfert de propriété automatique ni contournement des refus CoAP.
+
 ## 0.4.18
 
 - Sélection du service DTLS d'après le port source réel de la réponse, conformément

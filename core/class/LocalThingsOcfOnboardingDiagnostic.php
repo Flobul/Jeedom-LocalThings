@@ -7,6 +7,7 @@ class LocalThingsOcfOnboardingDiagnostic
     {
         $logger('info', '[OCF sans certificat] début ; identité cliente absente ; vérification CA serveur active ; GET uniquement');
         $connected = false;
+        $result = array('connected' => false);
         try {
             LocalThingsDiscovery::checkpoint(true);
             $session->connect(5.0);
@@ -36,7 +37,9 @@ class LocalThingsOcfOnboardingDiagnostic
             $logger('info', '[OCF sans certificat] bilan : ' . $state
                 . ' ; ressources de provisioning lues=' . count(array_filter($provisioning))
                 . ' ; aucun reset, transfert de propriété ou OwnerPSK effectué');
-            $result = array('connected' => true, 'security' => $security, 'provisioning' => $provisioning);
+            $result = array('connected' => true, 'security' => $security, 'provisioning' => $provisioning,
+                'access_hint' => self::accessHint($security));
+            $logger('info', '[OCF autorisation] ' . $result['access_hint']);
             if (is_callable($readSnapshot)) {
                 $logger('info', '[OCF sans certificat] lecture des états métier avant création en lecture seule');
                 $result['snapshot'] = $readSnapshot($session);
@@ -47,10 +50,31 @@ class LocalThingsOcfOnboardingDiagnostic
         } catch (Throwable $error) {
             $logger('info', '[OCF sans certificat] échec ; étape=' . ($connected ? 'lecture OCF' : 'handshake')
                 . ' ; cause=' . self::failureKind($error));
-            return array('connected' => $connected, 'error' => self::failureKind($error));
+            $result['connected'] = $connected;
+            $result['error'] = self::failureKind($error);
+            return $result;
         } finally {
             $session->close();
         }
+    }
+
+    /** La présence d'une ressource de provisioning ne constitue pas une autorisation. */
+    public static function accessHint(array $security)
+    {
+        $doxm = $security['/oic/sec/doxm'] ?? array();
+        $pstat = $security['/oic/sec/pstat'] ?? array();
+        if (($doxm['owned'] ?? null) === true) {
+            return 'Appareil déjà associé : la connexion sans certificat ne garantit pas l’accès aux états. '
+                . 'Si les lectures sont refusées, une identité autorisée par cet appareil est nécessaire. '
+                . 'Le parcours OwnerPSK documenté exige une autorisation d’association adaptée au modèle ; '
+                . 'aucune réassociation automatique.';
+        }
+        if (($doxm['owned'] ?? null) === false && ($pstat['isop'] ?? null) === false
+            && in_array($doxm['oxmsel'] ?? null, array(2, 65282), true)) {
+            return 'État compatible avec une fenêtre constructeur OTM : autorisation et prise en charge du modèle '
+                . 'restent à confirmer avant toute installation d’OwnerPSK. Lecture uniquement.';
+        }
+        return 'État d’association incomplet ou non reconnu ; accès aux états à vérifier par lecture.';
     }
 
     /** Classifier l'erreur sans recopier un certificat, une identité ou une trace OpenSSL. */

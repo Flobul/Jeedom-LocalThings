@@ -808,6 +808,7 @@ class LocalThingsSession
         $szx = LocalThingsCoap::BLOCK_SZX;
         $deadline = microtime(true) + max(1.0, (float) $timeout);
         $lastCode = 0;
+        $etag = null;
 
         while (true) {
             if ($block > 0) {
@@ -839,7 +840,18 @@ class LocalThingsSession
                 $block
             );
             $lastCode = (int) $response['code'];
+            if (($lastCode >> 5) === 2) {
+                $tags = LocalThingsCoap::optionValues($response, 4);
+                $currentTag = $tags ? $tags[0] : null;
+                if ($block > 0 && $etag !== null && $currentTag !== $etag) {
+                    throw new RuntimeException(__('Représentation CoAP modifiée entre deux blocs', __FILE__));
+                }
+                if ($block === 0) { $etag = $currentTag; }
+            }
             $payload .= (string) $response['payload'];
+            if (strlen($payload) > 262144) {
+                throw new RuntimeException(__('Réponse CoAP trop volumineuse', __FILE__));
+            }
             $this->log(
                 'debug',
                 sprintf(
@@ -874,7 +886,7 @@ class LocalThingsSession
                 return array($lastCode, $payload);
             }
             $block++;
-            if ($block > self::MAX_BLOCKS) {
+            if ($block >= self::MAX_BLOCKS) {
                 throw new RuntimeException(__('Réponse CoAP supérieure à ', __FILE__) . self::MAX_BLOCKS . ' blocs');
             }
         }
@@ -948,16 +960,15 @@ class LocalThingsSession
      */
     private function exchange($method, $token, $options, $payload, $deadline, $expectedBlock = null)
     {
+        $messageId = $this->nextMessageId();
+        $packet = LocalThingsCoap::build(
+            LocalThingsCoap::TYPE_CON, $method, $messageId, $token, $options, $payload
+        );
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
-            $messageId = $this->nextMessageId();
-            $packet = LocalThingsCoap::build(
-                LocalThingsCoap::TYPE_CON,
-                $method,
-                $messageId,
-                $token,
-                $options,
-                $payload
-            );
+            // RFC 7252 : une retransmission conserve MID, token et octets.
+            // Espacer aussi les ressources distinctes, pas seulement les blocs.
+            $this->pace();
+            if (microtime(true) >= $deadline) { break; }
             $this->transport->write($packet);
             $this->log(
                 'debug',
@@ -1024,7 +1035,7 @@ class LocalThingsSession
      */
     private function matchesExpectedBlock($response, $expectedBlock)
     {
-        if ($expectedBlock === null) {
+        if ($expectedBlock === null || ($response['code'] >> 5) !== 2) {
             return true;
         }
         $values = LocalThingsCoap::optionValues($response, LocalThingsCoap::OPTION_BLOCK2);

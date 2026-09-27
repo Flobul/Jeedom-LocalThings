@@ -95,11 +95,17 @@ class LocalThingsDeviceClient
      * @throws LocalThingsClientCertificateRejected Si le certificat client est refusé.
      * @throws RuntimeException Si l'état métier n'est pas exploitable.
      */
-    private function probePort($host, $port, $handshakeTimeout, $exhaustive)
+    protected function probePort($host, $port, $handshakeTimeout, $exhaustive)
     {
         $started = microtime(true);
         LocalThingsDiscovery::checkpoint();
-        $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : $handshakeTimeout, true);
+        try {
+            $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : $handshakeTimeout, true);
+        } catch (LocalThingsClientCertificateRejected $error) {
+            // Le repli ne représente jamais le certificat qui vient d'être refusé.
+            $snapshot = $this->probeReadOnlyFallback($host, $port,
+                function ($level, $message) { $this->log($level, $message); });
+        }
         $this->log('info', sprintf(
             __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
             $host, $port, $this->durationMs($started)
@@ -117,9 +123,6 @@ class LocalThingsDeviceClient
      */
     private function probeReadOnlyFallback($host, $port, $logger)
     {
-        $public = new LocalThingsOcfDiagnostic($host);
-        $public->inspect($logger);
-        $public->inspectProvisioning($logger);
         LocalThingsDiscovery::checkpoint(true);
         $transport = new LocalThingsDtlsClient($this->openssl, $host, $port,
             self::sourcePort($host), '', '', '', $this->rootCaPath, null, true);
@@ -135,7 +138,7 @@ class LocalThingsDeviceClient
         }
         if (!empty($diagnostic['connected'])) {
             throw new RuntimeException('Connexion DTLS sans certificat client réussie, mais aucun état exploitable obtenu ; '
-                . 'équipement non créé. Consulter les lignes [OCF lecture seule].');
+                . 'équipement non créé. ' . ($diagnostic['access_hint'] ?? 'Consulter les lignes [OCF lecture seule].'));
         }
         throw new RuntimeException('Connexion DTLS sans certificat client échouée');
     }
@@ -172,73 +175,41 @@ class LocalThingsDeviceClient
         if ($selectionPreference === null && count($advertised) === 1) {
             $selectionPreference = $advertised[0];
         }
+        return $this->probeCandidates($host, $results, $selectionPreference, $exhaustive);
+    }
+
+    /** Chaque endpoint prouvé est essayé une seule fois, y compris en cas d'échec du repli. */
+    private function probeCandidates($host, $results, $selectionPreference, $exhaustive)
+    {
+        // Seule la sélection des endpoints peut déclencher le parcours multiport.
+        // Une erreur d'authentification ou de lecture n'est pas une ambiguïté.
+        $candidatePorts = LocalThingsDtlsProbe::livePorts($results);
+        if (!$candidatePorts) {
+            throw new RuntimeException('Aucun service DTLS acceptant un ClientHello initial détecté');
+        }
         try {
-            $port = LocalThingsDtlsProbe::select($results, $selectionPreference);
-            $public->inspect($logger);
+            $selected = LocalThingsDtlsProbe::select($results, $selectionPreference);
+            $candidatePorts = array_merge(array($selected), array_values(array_diff($candidatePorts, array($selected))));
+        } catch (RuntimeException $selectionError) {
+            $this->log('info', '[Discovery] Plusieurs endpoints DTLS distincts ; un essai par endpoint');
+        }
+        $lastError = null;
+        foreach ($candidatePorts as $port) {
             $this->log('info', '[Discovery] Service DTLS détecté sur le port ' . $port
                 . ' ; authentification et accès aux ressources à vérifier');
-            // Un seul handshake authentifié, après le sondage sans état. Le même
-            // certificat refusé ne doit pas être présenté à tous les autres ports.
-            $started = microtime(true);
             try {
-                LocalThingsDiscovery::checkpoint();
-                $snapshot = $this->readSnapshot($host, $port, $exhaustive ? 5.0 : 2.0, true);
-                $this->log('info', sprintf(
-                    __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
-                    $host, $port, $this->durationMs($started)
-                ));
-                return $snapshot;
-            } catch (LocalThingsDiscoveryCancelled $exception) {
-                throw $exception;
-            } catch (Exception $exception) {
-                if ($exception instanceof LocalThingsClientCertificateRejected) {
-                    $snapshot = $this->probeReadOnlyFallback($host, $port, $logger);
-                    return $snapshot;
-                }
-                $this->log('warning', '[Discovery] Service détecté, ajout impossible : ' . $exception->getMessage());
-                throw $exception;
-            }
-        } catch (RuntimeException $ambiguousException) {
-            // Plusieurs ports DTLS répondent sans préférence : tester chaque
-            // candidat pour déterminer lequel expose des ressources exploitables.
-            $candidatePorts = LocalThingsDtlsProbe::livePorts($results);
-            if ($selectionPreference !== null && in_array((int) $selectionPreference, $candidatePorts, true)) {
-                $candidatePorts = array_merge(
-                    array((int) $selectionPreference),
-                    array_values(array_diff($candidatePorts, array((int) $selectionPreference)))
-                );
-            }
-            $public->inspect($logger);
-            foreach ($candidatePorts as $candidatePort) {
-                $this->log('info', '[Discovery] Test du port DTLS ' . $candidatePort . ' pour ' . $host);
-                try {
-                    $started = microtime(true);
-                    LocalThingsDiscovery::checkpoint();
-                    LocalThingsDiscovery::checkpoint(true);
-                    $snapshot = $this->readSnapshot($host, (int) $candidatePort, 5.0, true);
-                    $this->log('info', sprintf(
-                        __('[Discovery] Appareil trouvé sur %1$s:%2$d en %3$d ms', __FILE__),
-                        $host, $candidatePort, $this->durationMs($started)
-                    ));
-                    return $snapshot;
-                } catch (LocalThingsDiscoveryCancelled $cancelled) {
-                    throw $cancelled;
-                } catch (LocalThingsClientCertificateRejected $certException) {
-                    try {
-                        $snapshot = $this->probeReadOnlyFallback($host, (int) $candidatePort, $logger);
-                        return $snapshot;
-                    } catch (Exception $fallbackException) {
-                        $this->log('warning', '[Discovery] Port ' . $candidatePort
-                            . ' : lecture sans certificat échouée : ' . $fallbackException->getMessage());
-                    }
-                } catch (Exception $portException) {
-                    $this->log('warning', '[Discovery] Port ' . $candidatePort
-                        . ' : ' . $portException->getMessage());
+                return $this->probePort($host, $port, 2.0, $exhaustive);
+            } catch (LocalThingsDiscoveryCancelled $error) {
+                throw $error;
+            } catch (Exception $error) {
+                $lastError = $error;
+                if (count($candidatePorts) > 1) {
+                    $this->log('info', '[Discovery] Endpoint ' . $port . ' non exploitable : ' . $error->getMessage());
                 }
             }
-            $this->log('warning', '[Discovery] ' . $host . ' ignoré : ' . $ambiguousException->getMessage());
-            throw $ambiguousException;
         }
+        // Le worker publie une seule erreur finale pour cet hôte.
+        throw $lastError;
     }
 
     /**
@@ -661,8 +632,8 @@ class LocalThingsDeviceClient
                 )
             );
             $session->connect($handshakeTimeout);
-            $stage = 'lecture CoAP /device/0';
-            $resources = $readOnly ? $this->readOnlyResources($session) : $this->readResources($session);
+            $stage = $readOnly ? 'lecture des ressources OCF annoncées' : 'lecture CoAP /device/0';
+            $resources = $readOnly ? $this->readOnlyResources($session, $includeIdentity ? 240.0 : 25.0) : $this->readResources($session);
             $stage = 'identité et commandes';
             $identity = array();
             if ($includeIdentity) {
@@ -704,18 +675,13 @@ class LocalThingsDeviceClient
             if ($name === '') {
                 $name = 'Samsung ' . str_replace('_', ' ', $deviceType);
             }
-            if ($readOnly) {
-                $resources = array_filter($resources, function ($rep, $href) {
-                    return self::isBusinessResource($href, $rep);
-                }, ARRAY_FILTER_USE_BOTH);
-            }
             $mapped = $this->mapper->map($resources);
             if ($readOnly) {
                 foreach ($mapped['entities'] as &$entity) { $entity['actions'] = array(); }
                 unset($entity);
-                $businessResources = array_filter($resources, function ($href) {
-                    return strpos($href, '/information/') !== 0;
-                }, ARRAY_FILTER_USE_KEY);
+                $businessResources = array_filter($resources, function ($rep, $href) {
+                    return self::isBusinessResource($href, $rep);
+                }, ARRAY_FILTER_USE_BOTH);
                 $business = $this->mapper->map($businessResources);
                 if (!$business['entities']) {
                     throw new RuntimeException('Session DTLS établie mais aucun état de fonctionnement reconnu ; les informations réseau et de maintenance ne suffisent pas');
@@ -811,18 +777,20 @@ class LocalThingsDeviceClient
     }
 
     /** Lit les représentations annoncées, avec repli borné si /device/0 ne les agrège pas. */
-    private function readOnlyResources(LocalThingsSession $session)
+    private function readOnlyResources(LocalThingsSession $session, $budget = 25.0)
     {
         $resources = array();
         $stubs = array();
         $denied = 0;
         $timeouts = 0;
         $skipped = 0;
-        $deadline = microtime(true) + 25.0;
+        $truncated = false;
+        $deadline = microtime(true) + max(1.0, min(240.0, (float) $budget));
+        $this->log('info', '[OCF lecture seule] inventaire des ressources ; budget=' . (int) $budget . ' s');
         foreach (array('/device/0', '/oic/res') as $directoryPath) {
             LocalThingsDiscovery::checkpoint();
             try {
-                list($code, $payload) = $session->get($directoryPath, 4.0);
+                list($code, $payload) = $session->get($directoryPath, min(12.0, max(1.0, $deadline - microtime(true))));
                 $this->log('info', '[OCF lecture seule] GET ' . $directoryPath . ' : CoAP '
                     . LocalThingsCoap::formatCode($code) . ' ; octets=' . strlen($payload));
                 if ($code === 129 || $code === 131) { $denied++; }
@@ -830,15 +798,21 @@ class LocalThingsDeviceClient
                 $decoded = LocalThingsCbor::decode($payload);
                 if (!is_array($decoded)) { continue; }
                 $entries = isset($decoded['links']) ? $decoded['links'] : $decoded;
+                if (count((array) $entries) > 128) { $truncated = true; }
                 foreach (array_slice((array) $entries, 0, 128) as $entry) {
                     if (!is_array($entry)) { continue; }
                     $links = isset($entry['links']) ? $entry['links'] : array($entry);
-                    foreach ((array) $links as $link) {
+                    if (count((array) $links) > 128) { $truncated = true; }
+                    foreach (array_slice((array) $links, 0, 128) as $link) {
                         if (!is_array($link)) { continue; }
                         $href = $link['href'] ?? '';
                         if (!is_string($href) || strlen($href) > 160
                             || !preg_match('~^/(?:[a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+$~D', $href)
                             || strpos($href, '/oic/') === 0 || $href === '/device/0') { continue; }
+                        if (count($resources) + count($stubs) >= 128 && !isset($resources[$href]) && !isset($stubs[$href])) {
+                            $truncated = true;
+                            continue;
+                        }
                         $types = $link['rt'] ?? array();
                         if (in_array('x.com.samsung.provisioninginfo', (array) $types, true)
                             || self::isTechnicalResource($href, array('rt' => $types))) {
@@ -848,7 +822,10 @@ class LocalThingsDeviceClient
                         if (isset($link['rep']) && is_array($link['rep']) && $link['rep']) {
                             $resources[$href] = $link['rep'];
                             if (!isset($resources[$href]['rt'])) { $resources[$href]['rt'] = $types; }
-                        } else { $stubs[$href] = array('rt' => $types); }
+                            unset($stubs[$href]);
+                        } elseif (!isset($resources[$href])) {
+                            $stubs[$href] = array('rt' => $types);
+                        }
                     }
                 }
                 if ($resources && !$stubs) { break; }
@@ -868,12 +845,12 @@ class LocalThingsDeviceClient
         $attempted = array();
         foreach ($stubs as $href => $unused) {
             if (isset($resources[$href])) { continue; }
-            if ($index >= 96 || microtime(true) >= $deadline) { break; }
+            if (microtime(true) >= $deadline) { break; }
             LocalThingsDiscovery::checkpoint();
             $index++;
             $attempted[$href] = true;
             try {
-                list($code, $payload) = $session->get($href, min(1.5, max(1, $deadline - microtime(true))));
+                list($code, $payload) = $session->get($href, min(4.5, max(1.0, $deadline - microtime(true))));
                 $this->log('debug', '[OCF lecture seule] ressource #' . $index
                     . ' ; référence=' . substr(hash('sha256', $href), 0, 12)
                     . ' ; types=' . self::resourceTypeSummary($unused['rt'] ?? array()) . ' : CoAP '
@@ -894,15 +871,19 @@ class LocalThingsDeviceClient
                     . LocalThingsOcfOnboardingDiagnostic::failureKind($error));
             }
         }
+        $untested = count(array_diff_key($stubs, $resources, $attempted));
         $this->log('info', '[OCF lecture seule] représentations reçues=' . count($resources)
             . ' ; ressources individuelles testées=' . $index
             . ' ; refus d’accès=' . $denied . ' ; lectures en échec=' . $timeouts
             . ' ; ressources techniques ignorées=' . $skipped
-            . ' ; individuelles non testées=' . count(array_diff_key($stubs, $resources, $attempted))
+            . ' ; individuelles non testées=' . $untested
+            . ' ; inventaire=' . (($untested || $truncated) ? 'partiel' : 'complet')
+            . ($truncated ? ' ; limite de 128 ressources atteinte' : '')
             );
         if (!$resources) {
             throw new RuntimeException($denied > 0
-                ? 'Appareil joignable mais lecture non autorisée (CoAP 4.01/4.03) ; aucune donnée de fonctionnement accessible'
+                ? 'Appareil joignable ; refus de lecture CoAP 4.01/4.03 ; aucun état reçu'
+                    . (($untested || $timeouts || $truncated) ? ' ; certaines ressources restent non vérifiées' : '')
                 : 'Aucune représentation métier accessible en lecture seule');
         }
         return $resources;

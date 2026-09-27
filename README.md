@@ -281,3 +281,35 @@ Il reste à établir une autorisation permettant la lecture des états, puis le
 pilotage. Pour poursuivre le diagnostic depuis le plugin, activer **Debug**,
 lancer **Ajouter par IP** et transmettre le journal de cette découverte.
 Les types de ressources et les refus sont journalisés, sans leurs valeurs privées.
+
+### Diagnostic OCF et méthode OwnerPSK (0.4.19)
+
+La découverte lit les ressources accessibles pendant au maximum quatre minutes
+par endpoint en mode sans certificat (128 ressources au plus). Les lectures sont
+espacées et peuvent être retransmises ; le bouton d’arrêt reste actif. Les refus
+CoAP, les délais et les ressources non testées sont comptés séparément. Une
+réponse refusée ne provoque plus une nouvelle tentative avec le même certificat.
+Le rafraîchissement des équipements déjà enregistrés conserve son budget de
+25 secondes. Une collecte partielle ne signifie pas que toutes les ressources
+restantes sont interdites.
+
+La connexion DTLS et la consultation de `/oic/res` ne suffisent pas à créer un
+équipement fonctionnel : au moins un état de fonctionnement reconnu doit être
+reçu. Les autres informations non sensibles obtenues sont alors également
+mappées dans Jeedom, en lecture seule.
+
+La [méthode OCF-PKI documentée par SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local/blob/main/docs/ocf-pki-laundry.md)
+valide un accès complet sur deux WD53 après une autorisation liée au compte,
+un passage temporaire dans une fenêtre constructeur, puis l’installation et
+la vérification d’une clé OwnerPSK propre à chaque appareil. Le parcours
+d’autorisation signé n’est pas fourni comme procédure publique portable.
+La dérivation cryptographique seule ne donne aucun droit sur un appareil
+qui reste associé à son propriétaire actuel.
+
+Sur la PAC, `owned:true`, `isop:true`, une connexion sans certificat réussie
+et des réponses CoAP 4.01 ne prouvent donc pas que ce parcours est applicable.
+`additionalauthrequired:false` ne vaut pas autorisation de lecture des états.
+Le plugin ne réinitialise pas l’appareil et ne modifie ni ses propriétaires,
+ni ses clés, ni ses ACL. Il n’implémente pas encore l’association OwnerPSK.
+Le modèle exact et un parcours d’autorisation constructeur validé pour celui-ci
+sont nécessaires pour aller au-delà des ressources déjà accessibles.

@@ -27,3 +27,12 @@ identified the Java provisioning confirmation entry points and the advertised
 read-only inspection of the announced resource and a CA-verified DTLS session
 without client identity. No APK, native library, account value or private key
 from that export is included in the plugin.
+
+Review on 2026-09-27 against QuiteYellow/SmartThings-Local commit
+`23a60ce702cc28658f1941957089aa708c9895a4`: `docs/ocf-pki-laundry.md`,
+`protocol/auth.py`, `protocol/owner_psk.py` and `protocol/dtls_session.py`.
+Version 0.4.19 corrects endpoint retry handling and CoAP read pacing,
+retransmission and ETag checks. The documented same-account authorization
+transition remains a prerequisite outside this plugin; neither the WD53
+research result nor a successful trust-only session establishes authorization
+on another appliance model. No ownership transaction has been added.
