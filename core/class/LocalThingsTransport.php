@@ -10,6 +10,18 @@ class LocalThingsCertificateStore
     private const DEFAULT_BUNDLE_SHA256 = 'eaf6f4cd10e79d8dae437ad9db31a839e5ecacd84f5fb3d220f73954d06aa67d';
     private const MAX_BUNDLE_SIZE = 524288;
 
+    /**
+     * Profils de certificat client essayés par le diagnostic comparatif.
+     *
+     * `ac14k_m` signe la feuille avec l'autorité installée et lui adjoint la
+     * chaîne remontée. `self_signed` signe la feuille avec sa propre clé : la
+     * documentation de SmartThings-Local indique que l'appareil tested compare
+     * l'identifiant porté par le sujet sans valider le signataire. Aucun de
+     * ces profils n'est présumé correct pour un modèle non testé.
+     */
+    public const PROFILE_AC14K_M = 'ac14k_m';
+    public const PROFILE_SELF_SIGNED = 'self_signed';
+
     private $root;
     private $certificateDirectory;
     private $deviceDirectory;
@@ -436,6 +448,131 @@ class LocalThingsCertificateStore
     }
 
     /**
+     * Retourne ou génère un certificat client pour un profil d'authentification.
+     *
+     * Le profil `ac14k_m` reproduit la feuille actuelle : signature par
+     * l'autorité installée et chaîne complète. Le profil `self_signed` signe la
+     * feuille avec sa propre clé et n'embarque qu'un seul certificat, sans
+     * autorité : c'est la recette par défaut de SmartThings-Local. Les
+     * appareils testés autorisent par l'identifiant du sujet sans valider le
+     * signataire. Le choix du profil revient au diagnostic, jamais à la
+     * production.
+     *
+     * @param string $deviceId Identifiant stable de l'appareil.
+     * @param string $profile Profil demandé.
+     * @return array{0:string,1:string,2:string} Certificat, chaîne et clé.
+     */
+    public function mintLeafForProfile($deviceId, $profile = self::PROFILE_AC14K_M)
+    {
+        $profile = (string) $profile;
+        if (!in_array($profile, array(self::PROFILE_AC14K_M, self::PROFILE_SELF_SIGNED), true)) {
+            throw new InvalidArgumentException(__('Profil de certificat inconnu', __FILE__) . $profile);
+        }
+        if ($profile === self::PROFILE_AC14K_M) {
+            list($certificatePath, $keyPath) = $this->mintLeaf($deviceId);
+            return array($certificatePath, $this->caCertificatePath(), $keyPath);
+        }
+        if (!$this->isConfigured()) {
+            // L'identité Samsung reste nécessaire : seul le signataire change.
+            throw new RuntimeException(__('Les certificats LocalThings ne sont pas configurés', __FILE__));
+        }
+        $safeId = substr(hash('sha256', 'self-signed:' . (string) $deviceId), 0, 24);
+        $directory = $this->deviceDirectory . '/' . $safeId;
+        $certificatePath = $directory . '/client-fullchain.pem';
+        $keyPath = $directory . '/client.key';
+        if ($this->validLeafPair($certificatePath, $keyPath, true) && $this->isSelfSigned($certificatePath)) {
+            return array($certificatePath, '', $keyPath);
+        }
+        $this->ensureDirectory($directory);
+        $uuid = $this->samsungUuid();
+        $this->mintSelfSignedLeaf($directory, $uuid);
+        if (!$this->validLeafPair($certificatePath, $keyPath, true)) {
+            throw new RuntimeException(__('Le certificat autosigné généré est incohérent', __FILE__));
+        }
+        return array($certificatePath, '', $keyPath);
+    }
+
+    /**
+     * Génère une feuille autosignée portant l'identifiant Samsung.
+     *
+     * PHP refuse d'utiliser une CSR comme autorité (`openssl_csr_sign` attend un
+     * certificat), la signature est donc confiée au binaire OpenSSL, déjà
+     * exigé par le transport DTLS.
+     *
+     * @param string $directory Répertoire privé de l'appareil.
+     * @param string $uuid Identifiant Samsung à porter dans le sujet.
+     * @return void
+     */
+    private function mintSelfSignedLeaf($directory, $uuid)
+    {
+        $openssl = $this->opensslBinary();
+        $keyPath = $directory . '/client.key';
+        $certificatePath = $directory . '/client-fullchain.pem';
+        $subject = '/C=KR/O=Samsung Electronics/OU=uuid:' . $uuid . '/CN=urn:uuid:' . $uuid;
+        $command = escapeshellarg($openssl) . ' req -new -x509 -newkey rsa:2048 -nodes -sha256'
+            . ' -days 3650 -subj ' . escapeshellarg($subject)
+            . ' -addext ' . escapeshellarg('subjectAltName=URI:urn:uuid:' . $uuid)
+            . ' -addext ' . escapeshellarg('basicConstraints=CA:FALSE')
+            . ' -addext ' . escapeshellarg('keyUsage=digitalSignature,keyEncipherment')
+            . ' -addext ' . escapeshellarg('extendedKeyUsage=clientAuth')
+            . ' -keyout ' . escapeshellarg($keyPath)
+            . ' -out ' . escapeshellarg($certificatePath) . ' 2>&1';
+        $output = array();
+        $status = 1;
+        exec($command, $output, $status);
+        if ($status !== 0 || !is_file($certificatePath) || !is_file($keyPath)) {
+            throw new RuntimeException(
+                __('Génération du certificat autosigné impossible', __FILE__)
+                . ' (openssl ' . $status . ')'
+            );
+        }
+        @chmod($keyPath, 0600);
+        @chmod($certificatePath, 0600);
+    }
+
+    /**
+     * Localise un binaire OpenSSL pour la génération des certificats.
+     *
+     * @return string Chemin exécutable.
+     */
+    private function opensslBinary()
+    {
+        $configured = '';
+        if (class_exists('config')) {
+            $configured = trim((string) config::byKey('openssl_path', 'localthings', ''));
+        }
+        foreach (array($configured, '/usr/bin/openssl', '/usr/local/bin/openssl', '/opt/homebrew/bin/openssl') as $candidate) {
+            if ($candidate !== '' && is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+        throw new RuntimeException(__('Exécutable OpenSSL introuvable', __FILE__));
+    }
+
+    /**
+     * Indique si une chaîne PEM ne contient qu'un certificat autosigné.
+     *
+     * @param string $path Chemin du certificat.
+     * @return bool
+     */
+    private function isSelfSigned($path)
+    {
+        $certificate = $this->firstCertificate((string) file_get_contents($path));
+        if ($certificate === null) {
+            return false;
+        }
+        $parsed = openssl_x509_parse($certificate, false);
+        if (!is_array($parsed)) {
+            return false;
+        }
+        // Sans chaîne, un signataire distinct du sujet prouverait une feuille
+        // signée par une autorité : la comparaison des noms reste le critère.
+        $subject = self::subjectSummary($parsed['subject'] ?? array());
+        $issuer = self::subjectSummary($parsed['issuer'] ?? array());
+        return $subject !== '' && $subject === $issuer;
+    }
+
+    /**
      * Retourne le chemin de la chaîne de l'autorité installée.
      *
      * @return string
@@ -460,9 +597,11 @@ class LocalThingsCertificateStore
      *
      * @param string $certificatePath Chemin du certificat.
      * @param string $keyPath Chemin de la clé privée.
+     * @param bool $selfSigned Attend une feuille engageant sa propre clé plutôt
+     *        qu'une feuille signée par l'autorité installée.
      * @return bool
      */
-    private function validLeafPair($certificatePath, $keyPath)
+    private function validLeafPair($certificatePath, $keyPath, $selfSigned = false)
     {
         if (!is_file($certificatePath) || !is_file($keyPath)) {
             return false;
@@ -479,6 +618,16 @@ class LocalThingsCertificateStore
             || (isset($parsed['validTo_time_t']) && (int) $parsed['validTo_time_t'] <= time() + 86400)
         ) {
             return false;
+        }
+        if ($selfSigned) {
+            // Une feuille autosignée ne peut pas être validée contre l'autorité
+            // installée : c'est précisément ce qui distingue ce profil. La
+            // vérification exige la clé publique, extraite de la clé privée.
+            $details = openssl_pkey_get_details($key);
+            $publicKey = is_array($details) && isset($details['key'])
+                ? openssl_pkey_get_public($details['key'])
+                : false;
+            return $publicKey !== false && openssl_x509_verify($certificate, $publicKey) === 1;
         }
         $authority = $this->firstCertificate((string) file_get_contents($this->caCertificatePath));
         if ($authority === null) {
@@ -878,6 +1027,12 @@ class LocalThingsDtlsClient
 {
     private const FRAME_IDLE_SECONDS = 0.05;
 
+    /**
+     * Suite utilisée par la production. Elle est constante sur les appareils
+     * validés ; le diagnostic peut en essayer une autre sans l'imposer.
+     */
+    public const DEFAULT_CIPHER = 'ECDHE-ECDSA-AES128-GCM-SHA256:@SECLEVEL=0';
+
     private $openssl;
     private $host;
     private $port;
@@ -895,6 +1050,8 @@ class LocalThingsDtlsClient
     private $logger;
     private $relay;
     private $serverAuthReadOnly;
+    private $allowEmptyChain = false;
+    private $cipher = self::DEFAULT_CIPHER;
 
     /**
      * Prépare un transport DTLS piloté par le binaire OpenSSL.
@@ -909,6 +1066,9 @@ class LocalThingsDtlsClient
      * @param string $rootCaPath Autorité racine de confiance.
      * @param callable|null $logger Journaliseur facultatif.
      * @param bool $serverAuthReadOnly Diagnostic sans identité cliente, GET/ACK uniquement.
+     * @param array<string,mixed> $options Surcharges réservées au diagnostic
+     *        (`cipher`, `allowEmptyChain`). La production utilise les valeurs
+     *        par défaut, inchangées.
      */
     public function __construct(
         $openssl,
@@ -920,7 +1080,8 @@ class LocalThingsDtlsClient
         $keyPath,
         $rootCaPath,
         $logger = null,
-        $serverAuthReadOnly = false
+        $serverAuthReadOnly = false,
+        array $options = array()
     ) {
         $this->serverAuthReadOnly = (bool) $serverAuthReadOnly;
         $this->openssl = (string) $openssl;
@@ -932,6 +1093,12 @@ class LocalThingsDtlsClient
         $this->keyPath = (string) $keyPath;
         $this->rootCaPath = (string) $rootCaPath;
         $this->logger = is_callable($logger) ? $logger : null;
+        // Une feuille autosignée n'a pas de chaîne à transmettre : le serveur
+        // decide seul si ce signataire lui convient.
+        $this->allowEmptyChain = !empty($options['allowEmptyChain']);
+        $this->cipher = isset($options['cipher']) && $options['cipher'] !== ''
+            ? (string) $options['cipher']
+            : self::DEFAULT_CIPHER;
         $this->validateConfiguration();
     }
 
@@ -973,7 +1140,7 @@ class LocalThingsDtlsClient
             $this->rootCaPath,
             '-verify_return_error',
             '-cipher',
-            'ECDHE-ECDSA-AES128-GCM-SHA256:@SECLEVEL=0',
+            $this->cipher,
             '-mtu',
             '1200',
             '-brief',
@@ -987,8 +1154,12 @@ class LocalThingsDtlsClient
             $command = array_merge($command, array('-groups', 'P-256', '-sigalgs',
                 'RSA+SHA256:ECDSA+SHA256:RSA+SHA1:ECDSA+SHA1', '-no_ticket'));
         } else {
-            $command = array_merge($command, array('-cert', $this->certificatePath,
-                '-cert_chain', $this->certificateChainPath, '-key', $this->keyPath));
+            $command = array_merge($command, array('-cert', $this->certificatePath, '-key', $this->keyPath));
+            // Une chaîne absente est un choix du profil, pas une omission.
+            if ($this->certificateChainPath !== '') {
+                $command[] = '-cert_chain';
+                $command[] = $this->certificateChainPath;
+            }
         }
         $descriptor = array(
             0 => array('pipe', 'r'),
@@ -1363,7 +1534,15 @@ class LocalThingsDtlsClient
             throw new InvalidArgumentException('Une identité cliente ne peut pas être fournie au diagnostic sans certificat');
         }
         $paths = $this->serverAuthReadOnly ? array($this->rootCaPath)
-            : array($this->certificatePath, $this->certificateChainPath, $this->keyPath, $this->rootCaPath);
+            : array($this->certificatePath, $this->keyPath, $this->rootCaPath);
+        if ($this->certificateChainPath !== '') {
+            $paths[] = $this->certificateChainPath;
+        }
+        // Sans identité cliente, l'absence de feuille et de chaîne est la
+        // situation normale : c'est la vérification du serveur qui compte.
+        if (!$this->allowEmptyChain && !$this->serverAuthReadOnly && $this->certificateChainPath === '') {
+            throw new InvalidArgumentException(__('Chaîne de certificats client absente', __FILE__));
+        }
         foreach ($paths as $path) {
             if (!is_file($path) || !is_readable($path)) {
                 throw new InvalidArgumentException(__('Fichier DTLS illisible : ', __FILE__) . $path);

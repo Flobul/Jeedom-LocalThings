@@ -134,6 +134,49 @@ charge. LocalThings n'implémente pas ce transfert de propriété ni OwnerPSK :
 la détection de la PAC AE080BXYDGG ne signifie donc pas encore qu'elle peut
 être ajoutée et pilotée. La découverte LocalThings reste limitée à IPv4.
 
+### Diagnostic comparatif des certificats (0.4.21)
+
+La page du plugin propose **Comparer les certificats** pour une adresse IPv4.
+Le diagnostic essaie plusieurs profils de certificat client, chacun dans sa
+propre session DTLS, puis lit une ressource protégée :
+
+- `Certificat signé AC14K_M` : le profil utilisé par le plugin jusqu'ici ;
+- `Certificat autosigné` : la feuille porte l'identifiant Samsung et s'engage
+  elle-même, sans autorité. C'est la recette par défaut de SmartThings-Local,
+  dont les appareils testés autorisent l'identité portée par le sujet sans
+  valider le signataire ;
+- `Aucune identité cliente` : la référence, qui établit si l'appareil accepte
+  une session sans certificat.
+
+Chaque profil est essayé avec les suites ECDSA puis RSA. Cette seconde variable
+compte : le transport de production impose `ECDHE-ECDSA-AES128-GCM-SHA256`
+alors que la feuille AC14K_M est RSA, si bien qu'un refus peut venir de la suite
+plutôt que du certificat.
+
+Le résultat indique, par essai, le handshake (`accepté`, `refusé`,
+`unknown_ca`), la suite réellement négociée et la lecture protégée obtenue. Un
+`2.05` prouve que le profil est reconnu ; un `4.01` ou `4.03` prouve que
+l'identité est acceptée mais la ressource refusée, ce qui diffère d'un refus de
+certificat. Le bilan ne conclut sur rien d'autre : un `unknown_ca` sur tous les
+profils ne prouve pas que toute connexion locale est impossible, il indique
+seulement que le profil AC14K_M n'est pas le bon pour ce modèle.
+
+L'essai est **en lecture seule** : aucun reset, aucun changement de
+propriétaire, aucune écriture OCF, aucune clé dérivée. Le journal ne contient ni
+certificat, ni clé, ni UUID d'appareil. Le diagnostic partage le verrou de session
+avec la découverte, puisqu'un appareil n'accepte qu'un client DTLS actif.
+
+Pour l'exécuter : saisir l'adresse dans la barre de découverte de la page du
+plugin, cliquer sur **Comparer les certificats**, puis transmettre le journal
+**localthings**. Le port utilisé est celui de l'appareil déjà enregistré ;
+sinon, ajoutez d'abord l'appareil ou précisez le port.
+
+Sur le kit Wi-Fi MIM-H04EN de `192.168.16.178`, ce diagnostic n'a pas encore été
+exécuté : l'hôte de développement n'atteint pas ce réseau. Les résultats
+ci-dessus proviennent d'un serveur DTLS local reproduisant les trois
+comportements d'appareil documentés. La PAC AE080BXYDGG n'a pas été sondée et
+son comportement d'authentification reste inconnu.
+
 ## Widgets
 
 Chaque équipement peut utiliser soit le widget standard du core Jeedom, soit
@@ -268,13 +311,21 @@ et [QuiteYellow/SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Lo
 licence MIT ; les textes correspondants sont conservés dans
 `resources/attributions/`.
 
-### PAC Samsung : état de validation
+### Climatisations, kit Wi-Fi MIM-H04EN et PAC EHS : état de validation
 
-Les essais de la version 0.4.16 ont confirmé une connexion chiffrée à la PAC
-AE080BXYDGG, mais les commandes « Accesspoint », « Items » et « Selfhealing »
-ne représentent pas ses états de chauffage. La version 0.4.17 ne les utilise
-plus pour conclure que l’appareil est pris en charge. Les équipements déjà
-créés sont conservés ; un échec d’accès reste signalé.
+L’installation signalée comprend une PAC AE080BXYDGG et trois climatisations.
+L’utilisateur a précisé que les logs du 26 et du 28 septembre 2026 concernent
+le kit Wi-Fi MIM-H04EN d’une climatisation, avec le firmware `20260320.1`.
+Le diagnostic de refus d’accès de ces logs ne doit pas être attribué à la PAC.
+Les anciennes mentions de PAC dans l’historique doivent donc être recoupées
+avec l’identité du module effectivement interrogé.
+
+Le modèle `SAC_EHS_MONO` identifie un profil EHS même lorsque Samsung annonce
+`oic.d.airconditioner`. Une ressource `controllerstatus.ehs` dans un répertoire
+ne suffit pas à classer le kit Wi-Fi lui-même comme PAC.
+Les informations « Accesspoint », « Items » et « Selfhealing » ne constituent
+pas des états de chauffage. Les équipements déjà créés sont conservés ;
+un échec d’accès reste signalé.
 
 Un retour CoAP **4.01** indique un accès non autorisé à la ressource demandée.
 Il reste à établir une autorisation permettant la lecture des états, puis le
@@ -306,7 +357,7 @@ d’autorisation signé n’est pas fourni comme procédure publique portable.
 La dérivation cryptographique seule ne donne aucun droit sur un appareil
 qui reste associé à son propriétaire actuel.
 
-Sur la PAC, `owned:true`, `isop:true`, une connexion sans certificat réussie
+Sur le kit Wi-Fi interrogé, `owned:true`, `isop:true`, une connexion sans certificat réussie
 et des réponses CoAP 4.01 ne prouvent donc pas que ce parcours est applicable.
 `additionalauthrequired:false` ne vaut pas autorisation de lecture des états.
 Le plugin ne réinitialise pas l’appareil et ne modifie ni ses propriétaires,

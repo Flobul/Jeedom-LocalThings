@@ -24,6 +24,11 @@ try {
         case 'probe':
             ajax::success(localthings::probeHost((string) init('host')));
             break;
+        case 'certificateDiagnostic':
+            ajax::success(
+                localthings::compareCertificates((string) init('host'), init('port'))
+            );
+            break;
         case 'refresh':
             $eqLogic = localthings::byId((int) init('id'));
             if (!is_object($eqLogic)) {

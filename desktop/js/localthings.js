@@ -45,6 +45,10 @@
     scan?.setAttribute("aria-disabled", String(scanBusy || Boolean(stopping)));
     const probe = document.getElementById("bt_probeLocalthings");
     if (probe) probe.disabled = scanBusy || Boolean(scanState.running);
+    // Le diagnostic comparatif ouvre aussi une session DTLS : il ne doit pas
+    // concurrencer une découverte sur le même appareil.
+    const certificate = document.getElementById("bt_certificateLocalthings");
+    if (certificate) certificate.disabled = scanBusy || Boolean(scanState.running);
     const progress = document.getElementById("localthings-scan-progress");
     const bar = progress?.querySelector(".progress-bar");
     if (progress && bar) {
@@ -86,6 +90,87 @@
       }
       scheduleScan(status.running ? 1500 : 5000);
     }, function () { scanPolling = false; scheduleScan(5000); });
+  }
+
+  function renderCertificateResults(results) {
+    const panel = document.getElementById("localthings-certificate-result");
+    if (!panel) return;
+    const rows = Array.isArray(results) ? results : [];
+    panel.textContent = "";
+    if (!rows.length) {
+      panel.style.display = "none";
+      return;
+    }
+    // Le tableau reprend exactement ce que le diagnostic a classé. Les valeurs
+    // passent par textContent : ni certificat, ni clé, ni identifiant d'appareil
+    // ne provient du contenu de l'appareil, et rien n'est interprété comme HTML.
+    const table = document.createElement("table");
+    table.className = "table table-condensed table-bordered";
+    table.style.marginBottom = "0";
+    const head = table.createTHead().insertRow();
+    ["{{Profil}}", "{{Suite}}", "{{Handshake}}", "{{Lecture protégée}}"].forEach(function (title) {
+      const cell = document.createElement("th");
+      cell.textContent = title;
+      head.appendChild(cell);
+    });
+    const body = table.createTBody();
+    rows.forEach(function (row) {
+      const line = body.insertRow();
+      const profile = line.insertCell();
+      profile.textContent = row.label || row.profile || "";
+      const cipher = line.insertCell();
+      const code = document.createElement("code");
+      code.textContent = row.cipher || "-";
+      cipher.appendChild(code);
+      const handshake = line.insertCell();
+      const badge = document.createElement("span");
+      if (row.authorized) {
+        badge.className = "label label-success";
+        badge.textContent = "{{autorisé}}";
+      } else if (row.handshake === "accepted") {
+        badge.className = "label label-warning";
+        badge.textContent = "{{handshake accepté}}";
+      } else {
+        badge.className = "label label-danger";
+        badge.textContent = "{{refusé}}";
+      }
+      handshake.appendChild(badge);
+      line.insertCell().textContent = row.read || "-";
+    });
+    panel.appendChild(table);
+    const note = document.createElement("p");
+    note.className = "text-muted";
+    note.style.margin = "6px 0 0";
+    note.textContent = "{{Essai en lecture seule : aucun reset, aucun changement de propriétaire, "
+      + "aucune écriture OCF. Les détails figurent dans le journal localthings.}}";
+    panel.appendChild(note);
+    panel.style.display = "block";
+  }
+
+  function compareCertificates(button, host) {
+    const icon = button.querySelector("i");
+    if (icon) icon.className = "fas fa-spinner fa-spin";
+    button.disabled = true;
+    const restore = function () {
+      if (icon) icon.className = "fas fa-certificate";
+      button.disabled = false;
+    };
+    ajax("certificateDiagnostic", { host: host }, function (results) {
+      restore();
+      renderCertificateResults(results);
+    }, function (error) {
+      restore();
+      const panel = document.getElementById("localthings-certificate-result");
+      if (panel) {
+        const alert = document.createElement("div");
+        alert.className = "alert alert-warning";
+        alert.style.margin = "0";
+        alert.textContent = error || "{{Comparaison impossible}}";
+        panel.textContent = "";
+        panel.appendChild(alert);
+        panel.style.display = "block";
+      }
+    });
   }
 
   function scanAction(action, data) {
@@ -141,6 +226,18 @@
         return;
       }
       scanAction("probe", { host: host });
+      return;
+    }
+
+    const certificateButton = event.target.closest("#bt_certificateLocalthings");
+    if (certificateButton) {
+      if (scanBusy || scanState.running) return;
+      const host = document.getElementById("in_localthings_host")?.value.trim() || "";
+      if (!host) {
+        jeedomUtils.showAlert({ message: "{{Saisissez une adresse IPv4}}", level: "warning" });
+        return;
+      }
+      compareCertificates(certificateButton, host);
       return;
     }
 

@@ -14,13 +14,14 @@ require_once __DIR__ . '/LocalThingsTransport.php';
 require_once __DIR__ . '/LocalThingsMapper.php';
 require_once __DIR__ . '/LocalThingsWidget.php';
 require_once __DIR__ . '/LocalThingsClient.php';
+require_once __DIR__ . '/LocalThingsCertificateDiagnostic.php';
 
 /**
  * Représente un équipement LocalThings et son intégration au cycle de vie Jeedom.
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.19';
+    public static $_pluginVersion = '0.4.20';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -194,6 +195,71 @@ class localthings extends eqLogic
             log::add(__CLASS__, 'info', '[Discovery] Arrêt demandé depuis Jeedom');
         }
         return $status;
+    }
+
+    /**
+     * Compare les profils de certificat acceptés par un appareil.
+     *
+     * Sérialisé sur l'hôte comme une découverte : un seul client DTLS actif est
+     * autorisé par appareil. En lecture seule, sans création d'équipement.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param mixed $port Port DTLS, ou vide pour le port déjà enregistré.
+     * @return array<int,array<string,mixed>>
+     */
+    public static function compareCertificates($host, $port = null)
+    {
+        self::assertCertificates();
+        $host = trim((string) $host);
+        if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            throw new InvalidArgumentException(__('Adresse IPv4 invalide', __FILE__));
+        }
+        $port = (int) $port;
+        if ($port < 1 || $port > 65535) {
+            $port = self::registeredPort($host);
+        }
+        if ($port < 1) {
+            throw new Exception(
+                __('Aucun port DTLS connu pour cet appareil ; ajoutez-le d’abord ou précisez le port.', __FILE__)
+            );
+        }
+        log::add(__CLASS__, 'info', sprintf(
+            __('[Certificat comparatif] Demande pour %1$s:%2$d', __FILE__),
+            $host,
+            $port
+        ));
+        $diagnostic = new LocalThingsCertificateDiagnostic(
+            LocalThingsDeviceClient::findOpenSsl(),
+            self::certificateStore(),
+            self::resourcePath() . '/certificates/ocf_root_ca.pem',
+            function ($level, $message) { log::add(__CLASS__, $level, $message); }
+        );
+        // Même verrou qu'une découverte : un seul client DTLS actif par appareil.
+        return self::deviceClient()->withHostLockFor(
+            $host,
+            function () use ($diagnostic, $host, $port) {
+                return $diagnostic->compare($host, $port);
+            }
+        );
+    }
+
+    /**
+     * Retrouve le port DTLS d'un appareil déjà enregistré.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @return int Port connu, ou 0.
+     */
+    private static function registeredPort($host)
+    {
+        foreach (self::byType(__CLASS__) as $eqLogic) {
+            if ((string) $eqLogic->getConfiguration('host') === $host) {
+                $port = (int) $eqLogic->getConfiguration('port');
+                if ($port > 0) {
+                    return $port;
+                }
+            }
+        }
+        return 0;
     }
 
     /**

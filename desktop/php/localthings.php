@@ -30,11 +30,16 @@ $eqLogics = eqLogic::byType($plugin->getId());
             <div class="input-group">
                 <input id="in_localthings_host" type="text" inputmode="decimal" class="form-control roundedLeft" placeholder="{{Adresse IPv4 de l’appareil}}">
                 <span class="input-group-btn">
+                    <button type="button" id="bt_certificateLocalthings" class="btn btn-warning"
+                            title="{{Comparer les profils de certificat acceptés par cet appareil}}">
+                        <i class="fas fa-certificate"></i> {{Comparer les certificats}}
+                    </button>
                     <button type="button" id="bt_probeLocalthings" class="btn btn-primary roundedRight">
                         <i class="fas fa-plus"></i> {{Ajouter par IP}}
                     </button>
                 </span>
             </div>
+            <div id="localthings-certificate-result" class="localthings-certificate-result" style="display:none;"></div>
             <div id="localthings-scan-progress" class="progress" style="display:none;">
                 <div class="progress-bar progress-bar-striped active" role="progressbar" style="width:0%"></div>
             </div>

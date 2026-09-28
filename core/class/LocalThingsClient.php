@@ -654,7 +654,11 @@ class LocalThingsDeviceClient
                 : ($ocfDeviceId !== ''
                     ? $ocfDeviceId
                     : ($knownDeviceId !== '' ? $knownDeviceId : $host . ':' . $port));
-            $deviceType = $this->mapper->deviceType($resources, $identity);
+            $typeIdentity = $identity;
+            if (empty($typeIdentity['model']) && !empty($knownDevice['model'])) {
+                $typeIdentity['model'] = $knownDevice['model'];
+            }
+            $deviceType = $this->mapper->deviceType($resources, $typeIdentity);
             if ($deviceType === 'unknown' && !empty($knownDevice['device_type'])) {
                 $deviceType = (string) $knownDevice['device_type'];
             }
@@ -1068,6 +1072,23 @@ class LocalThingsDeviceClient
             $ports = array_merge($ports, self::PROBE_PORTS);
         }
         return array_values(array_unique($ports));
+    }
+
+    /**
+     * Exécute un traitement sous le verrou de port de l'hôte.
+     *
+     * Un appareil Samsung n'accepte qu'un client DTLS actif : le diagnostic
+     * comparatif passe par ce même verrou qu'une découverte ou un rafraîchissement,
+     * faute de quoi les deux sessions se concurrenceraient.
+     *
+     * @param string $host Adresse IPv4 cible.
+     * @param callable $callback Traitement à exécuter sous verrou.
+     * @return mixed Valeur retournée par le traitement.
+     */
+    public function withHostLockFor($host, callable $callback)
+    {
+        $host = $this->validateHost($host);
+        return $this->withHostLock($host, $callback);
     }
 
     /**

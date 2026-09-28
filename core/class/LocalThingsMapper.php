@@ -67,6 +67,16 @@ class LocalThingsMapper
             }
         }
 
+        // Samsung déclare aussi ses EHS comme oic.d.airconditioner.
+        // Le modèle local est plus précis que ce type générique. Un kit Wi-Fi
+        // peut annoncer des ressources EHS sans être lui-même une PAC.
+        $information = $resources['/information/vs/0'] ?? array();
+        foreach (array($identity['model'] ?? '', $information['x.com.samsung.da.modelNum'] ?? '') as $candidateModel) {
+            $modelFamily = strtoupper(explode('|', (string) $candidateModel, 2)[0]);
+            if (in_array('EHS', preg_split('/[^A-Z0-9]+/', $modelFamily), true)) {
+                return 'ehs';
+            }
+        }
         $types = (array) ($identity['device_types'] ?? array());
         $ocfTypes = array(
             'oic.d.airconditioner' => 'airconditioner',

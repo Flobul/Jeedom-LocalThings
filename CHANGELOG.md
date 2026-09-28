@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.4.21
+
+- Nouveau diagnostic comparatif des certificats, depuis la barre de découverte
+  de la page du plugin. Il essaie le profil AC14K_M, un profil autosigné
+  conforme à la recette par défaut de SmartThings-Local, et une session sans
+  identité cliente, puis lit une ressource protégée pour chaque profil.
+- Chaque profil est essayé avec les suites ECDSA et RSA. Le transport imposait
+  jusqu'ici `ECDHE-ECDSA-AES128-GCM-SHA256` alors que la feuille AC14K_M est
+  RSA : un refus pouvait donc provenir de la suite plutôt que du certificat.
+  Les valeurs par défaut de la production sont inchangées.
+- Le résultat distingue une identité acceptée d'une ressource refusée (`4.01`,
+  `4.03`) et d'un refus de certificat (`unknown_ca`). Un refus sur tous les
+  profils n'est plus présenté comme une absence d'authentification possible.
+- Une feuille autosignée est désormais générée par appareil et validée contre
+  sa propre clé : la validation exigeait jusqu'ici une signature de l'autorité
+  installée, ce qui était impossible à satisfaire.
+- Essai en lecture seule : aucun reset, aucun changement de propriétaire,
+  aucune écriture OCF. Le journal ne contient ni certificat, ni clé, ni UUID.
+- Le diagnostic partage le verrou de session avec la découverte et la page.
+- Le transport accepte une chaîne client absente lorsque le profil l'exige,
+  sans que l'absence devienne silencieuse en production.
+
+## 0.4.20
+
+- Les modèles Samsung EHS sont reconnus
+  avant le type générique `oic.d.airconditioner` : profil « Pompe à chaleur EHS ».
+- Le modèle enregistré reste utilisable pour le classement pendant les
+  rafraîchissements sans relecture de l’identité. Les profils PRAC restent
+  classés comme climatiseurs ; les suffixes du modèle ne servent pas au typage.
+- Cette correction du profil ne modifie pas les droits d’accès OCF.
+- Attribution précisée par l’utilisateur : les logs du 26 et du 28 septembre
+  concernent le kit Wi-Fi MIM-H04EN d’une climatisation,
+  pas la PAC AE080BXYDGG. Une ressource `controllerstatus.ehs` ne suffit pas
+  à classer un kit Wi-Fi comme PAC ni à conclure sur sa compatibilité.
+
 ## 0.4.19
 
 - Un seul essai par endpoint DTLS prouvé : un échec du repli sans certificat
