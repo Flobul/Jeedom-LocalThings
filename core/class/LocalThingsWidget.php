@@ -373,7 +373,7 @@ class LocalThingsWidget
     private static function isTechnicalDetail($identity)
     {
         return preg_match(
-            '/(?:supported|available|edit[ _-]?course|course.*table|washercourse|dryercourse|modelnum|serialnum|description|firmware|softwareversion|manufacturer|increment|dateutc|timestamp|device[ _-]?type|update.*allow|laundry.*out.*time|seamless.*control|usages.*db|most.*used|energy.*level.*set|special.*function|detergent.*(?:once|base|type)|drum.*clean.*log|time.*sync|battery.*resolution|(?:power|consumption).*(?:unit|date)|rawvalue)/',
+            '/(?:supported|available|edit[ _-]?course|course.*table|washercourse|dryercourse|modelnum|serialnum|description|firmware|softwareversion|manufacturer|increment|dateutc|timestamp|device[ _-]?type|update.*allow|laundry.*out.*time|seamless.*control|usages.*db|most.*used|energy.*level.*set|special.*function|detergent.*(?:once|base|type)|drum.*clean.*log|time.*sync|battery.*resolution|(?:power|consumption|temperature|humidity).*(?:units?|date)|rawvalue)/',
             (string) $identity
         ) === 1;
     }
@@ -507,6 +507,9 @@ class LocalThingsWidget
             return array('label' => __('Durée', __FILE__), 'icon' => 'fas fa-clock', 'asset' => '');
         }
         if (strpos($identity, 'mode_') !== false && $group === 'settings') {
+            if (in_array($deviceType, array('airconditioner', 'ehs'), true) && trim((string) $name) !== '') {
+                return array('label' => $name, 'icon' => 'fas fa-cog', 'asset' => '');
+            }
             if (in_array($deviceType, array('oven', 'range', 'microwave'), true)) {
                 return array('label' => __('Mode', __FILE__), 'icon' => '', 'asset' => 'ovenMode.svg');
             }
@@ -617,7 +620,7 @@ class LocalThingsWidget
     public static function statusSlot($entityKey, $name = '')
     {
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
-        if (strpos($identity, 'airqualitystandard') !== false) {
+        if (self::isTechnicalDetail($identity) || strpos($identity, 'airqualitystandard') !== false) {
             return '';
         }
         if (preg_match('/(?:remainingtime|remaining[ _-]time|temps restant|completiontime)/', $identity)) {

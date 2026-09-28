@@ -27,10 +27,8 @@ class LocalThingsCertificateDiagnostic
     /**
      * Suites essayées pour un profil donné.
      *
-     * La suite de production est ECDSA alors que la feuille AC14K_M est RSA :
-     * le transport force donc une suite que sa propre identité ne peut pas
-     * utiliser pour signer. Les deux familles sont donc testées, ce qui sépare
-     * un refus de certificat d'un refus de suite.
+     * ECDSA/RSA décrit la signature du serveur, pas celle du certificat client.
+     * Les deux suites permettent de tester les deux familles de serveurs.
      */
     private const CIPHERS = array(
         'ECDHE-ECDSA-AES128-GCM-SHA256:@SECLEVEL=0',
@@ -38,7 +36,7 @@ class LocalThingsCertificateDiagnostic
     );
 
     private const HANDSHAKE_TIMEOUT = 6.0;
-    private const PROBE_PATHS = array('/oic/sec/acl', '/oic/p');
+    private const PROBE_PATHS = array('/oic/sec/acl', '/device/0');
     // La session réémet jusqu'à trois fois : le budget couvre une retransmission
     // complète, sinon un appareil lent serait classé « aucune réponse ».
     private const PROBE_TIMEOUT = 12.0;
@@ -137,7 +135,7 @@ class LocalThingsCertificateDiagnostic
             'profile' => $profile,
             'label' => $label,
             'cipher' => $shortCipher,
-            'handshake' => 'refused',
+            'handshake' => 'not_tested',
             'suite' => '',
             'read' => 'non tenté',
             'authorized' => false,
@@ -180,7 +178,7 @@ class LocalThingsCertificateDiagnostic
             $preparation = $error instanceof InvalidArgumentException;
             $result['handshake'] = $preparation
                 ? 'non exécuté'
-                : (self::isCertificateRejection($error) ? 'refused (unknown_ca)' : 'refused');
+                : (self::isCertificateRejection($error) ? 'refused (unknown_ca)' : 'failed');
             $this->log('info', '[Certificat comparatif] ' . $label . ' : ' . $result['handshake']
                 . ' ; ' . self::failureKind($error));
         } finally {
@@ -210,9 +208,9 @@ class LocalThingsCertificateDiagnostic
     /**
      * Lit une ressource protégée pour éprouver l'autorisation.
      *
-     * Une réponse 2.05 prouve que le profil est reconnu ; un 4.01 prouve que
-     * l'appareil connaît l'identité mais refuse la ressource, ce qui est un
-     * résultat distinct d'un refus de certificat.
+     * Seule une réponse 2.05 confirme la lecture de la ressource testée.
+     * Un refus CoAP ne prouve pas que l'identité cliente est reconnue.
+     * Les métadonnées publiques ne servent pas de preuve d'autorisation.
      *
      * @param LocalThingsDtlsClient $transport Transport déjà connecté.
      * @return array{outcome:string,authorized:bool}
@@ -220,23 +218,23 @@ class LocalThingsCertificateDiagnostic
     private function readProtected($transport)
     {
         $session = new LocalThingsSession($transport);
+        $outcome = 'aucune réponse exploitable';
         foreach (self::PROBE_PATHS as $path) {
             try {
                 list($code) = $session->get(explode('/', ltrim($path, '/')), self::PROBE_TIMEOUT);
+            } catch (LocalThingsDiscoveryCancelled $error) {
+                throw $error;
             } catch (Throwable $error) {
                 $this->log('info', '[Certificat comparatif] lecture ' . $path . ' : ' . self::failureKind($error));
                 continue;
             }
-            if (($code >> 5) === 2) {
+            if ($code === 69) {
                 return array('outcome' => 'autorisé (' . $path . ' 2.05)', 'authorized' => true);
             }
-            if ($code === 129 || $code === 132) {
-                // 4.03 ou 4.04 : identité acceptée, ressource non servie.
-                return array(
-                    'outcome' => 'identité acceptée, ressource refusée (' . $path . ' '
-                        . LocalThingsCoap::formatCode($code) . ')',
-                    'authorized' => true
-                );
+            if ($code === 132) {
+                // Ressource absente : essayer l'autre ressource protégée.
+                $outcome = 'ressource absente (' . $path . ' 4.04)';
+                continue;
             }
             $this->log('info', '[Certificat comparatif] lecture ' . $path . ' -> '
                 . LocalThingsCoap::formatCode($code));
@@ -245,7 +243,7 @@ class LocalThingsCertificateDiagnostic
                 'authorized' => false
             );
         }
-        return array('outcome' => 'aucune réponse exploitable', 'authorized' => false);
+        return array('outcome' => $outcome, 'authorized' => false);
     }
 
     /**
@@ -273,14 +271,14 @@ class LocalThingsCertificateDiagnostic
     {
         $accepted = array();
         foreach ($results as $result) {
-            if ($result['handshake'] === 'accepted') {
+            if (!empty($result['authorized'])) {
                 $accepted[] = ($result['label'] ?? $result['profile']) . ' (' . $result['cipher'] . ')';
             }
         }
         if (count($accepted) === 0) {
-            return 'aucun profil accepté ; l’appareil refuse toute identité cliente testée.';
+            return 'aucune lecture protégée autorisée ; consulter séparément les résultats de connexion et de lecture.';
         }
-        return 'profils acceptés : ' . implode(' | ', $accepted) . '.';
+        return 'profils avec lecture protégée autorisée : ' . implode(' | ', $accepted) . '.';
     }
 
     /**

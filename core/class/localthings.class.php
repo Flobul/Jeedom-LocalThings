@@ -21,7 +21,7 @@ require_once __DIR__ . '/LocalThingsCertificateDiagnostic.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.20';
+    public static $_pluginVersion = '0.4.22';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -218,16 +218,6 @@ class localthings extends eqLogic
         if ($port < 1 || $port > 65535) {
             $port = self::registeredPort($host);
         }
-        if ($port < 1) {
-            throw new Exception(
-                __('Aucun port DTLS connu pour cet appareil ; ajoutez-le d’abord ou précisez le port.', __FILE__)
-            );
-        }
-        log::add(__CLASS__, 'info', sprintf(
-            __('[Certificat comparatif] Demande pour %1$s:%2$d', __FILE__),
-            $host,
-            $port
-        ));
         $diagnostic = new LocalThingsCertificateDiagnostic(
             LocalThingsDeviceClient::findOpenSsl(),
             self::certificateStore(),
@@ -238,6 +228,8 @@ class localthings extends eqLogic
         return self::deviceClient()->withHostLockFor(
             $host,
             function () use ($diagnostic, $host, $port) {
+                $port = self::deviceClient()->certificateDiagnosticPort($host, $port > 0 ? $port : null);
+                log::add(__CLASS__, 'info', '[Certificat comparatif] Endpoint détecté : ' . $host . ':' . $port);
                 return $diagnostic->compare($host, $port);
             }
         );

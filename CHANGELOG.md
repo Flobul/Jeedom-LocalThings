@@ -1,18 +1,23 @@
 # Changelog
 
+## 0.4.22
+
+- Comparaison des certificats sans équipement créé : détection préalable du port DTLS, sous verrou.
+- Seule une lecture protégée 2.05 est autorisée ; les refus CoAP et les erreurs réseau ne sont plus présentés comme des identités acceptées ou refusées.
+- Repli de lecture authentifiée via /oic/res et les ressources individuelles dans une nouvelle session quand /device/0 échoue. Aucun équipement créé sur les seules métadonnées.
+- Correction de l’attribution du MIM-H04EN : boîtier Wi-Fi de la PAC EHS.
+- Version du diagnostic synchronisée et message d’erreur affiché sans balises HTML.
+- Les unités techniques de température/humidité ne remplacent plus les mesures dans le widget.
+- Les réglages de climatisation conservent leurs noms distincts au lieu du libellé générique Mode.
+
 ## 0.4.21
 
 - Nouveau diagnostic comparatif des certificats, depuis la barre de découverte
   de la page du plugin. Il essaie le profil AC14K_M, un profil autosigné
   conforme à la recette par défaut de SmartThings-Local, et une session sans
   identité cliente, puis lit une ressource protégée pour chaque profil.
-- Chaque profil est essayé avec les suites ECDSA et RSA. Le transport imposait
-  jusqu'ici `ECDHE-ECDSA-AES128-GCM-SHA256` alors que la feuille AC14K_M est
-  RSA : un refus pouvait donc provenir de la suite plutôt que du certificat.
-  Les valeurs par défaut de la production sont inchangées.
-- Le résultat distingue une identité acceptée d'une ressource refusée (`4.01`,
-  `4.03`) et d'un refus de certificat (`unknown_ca`). Un refus sur tous les
-  profils n'est plus présenté comme une absence d'authentification possible.
+- Chaque profil est essayé avec les suites serveur ECDSA et RSA.
+- Le classement des refus CoAP et des erreurs réseau est corrigé en 0.4.22.
 - Une feuille autosignée est désormais générée par appareil et validée contre
   sa propre clé : la validation exigeait jusqu'ici une signature de l'autorité
   installée, ce qui était impossible à satisfaire.
@@ -31,8 +36,7 @@
   classés comme climatiseurs ; les suffixes du modèle ne servent pas au typage.
 - Cette correction du profil ne modifie pas les droits d’accès OCF.
 - Attribution précisée par l’utilisateur : les logs du 26 et du 28 septembre
-  concernent le kit Wi-Fi MIM-H04EN d’une climatisation,
-  pas la PAC AE080BXYDGG. Une ressource `controllerstatus.ehs` ne suffit pas
+  concernent le kit Wi-Fi MIM-H04EN de la PAC (attribution corrigée en 0.4.22). Une ressource `controllerstatus.ehs` ne suffit pas
   à classer un kit Wi-Fi comme PAC ni à conclure sur sa compatibilité.
 
 ## 0.4.19

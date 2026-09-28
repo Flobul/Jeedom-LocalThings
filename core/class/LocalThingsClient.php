@@ -178,6 +178,17 @@ class LocalThingsDeviceClient
         return $this->probeCandidates($host, $results, $selectionPreference, $exhaustive);
     }
 
+    /** Détection seule, appelée sous le verrou d'hôte par le comparateur. */
+    public function certificateDiagnosticPort($host, $preferredPort = null)
+    {
+        $host = $this->validateHost($host);
+        $public = new LocalThingsOcfDiagnostic($host);
+        $advertised = $public->discoverPorts(function ($level, $message) { $this->log($level, $message); });
+        $results = LocalThingsDtlsProbe::scan($host,
+            self::buildProbeOrder($advertised, $preferredPort, true), $this->openssl);
+        return LocalThingsDtlsProbe::select($results, $preferredPort ?: (count($advertised) === 1 ? $advertised[0] : null));
+    }
+
     /** Chaque endpoint prouvé est essayé une seule fois, y compris en cas d'échec du repli. */
     private function probeCandidates($host, $results, $selectionPreference, $exhaustive)
     {
@@ -633,7 +644,25 @@ class LocalThingsDeviceClient
             );
             $session->connect($handshakeTimeout);
             $stage = $readOnly ? 'lecture des ressources OCF annoncées' : 'lecture CoAP /device/0';
-            $resources = $readOnly ? $this->readOnlyResources($session, $includeIdentity ? 240.0 : 25.0) : $this->readResources($session);
+            $individualFallback = false;
+            if ($readOnly) {
+                $resources = $this->readOnlyResources($session, $includeIdentity ? 240.0 : 25.0);
+            } else {
+                try {
+                    $resources = $this->readResources($session);
+                } catch (LocalThingsDiscoveryCancelled $error) {
+                    throw $error;
+                } catch (Throwable $error) {
+                    $this->log('info', '[Discovery] Lecture /device/0 échouée ; nouvelle session avec le même certificat pour /oic/res et les états individuels');
+                    $session->close();
+                    $session = $this->createSession($host, (int) $port, false);
+                    $stage = 'négociation DTLS du repli authentifié';
+                    $session->connect($handshakeTimeout);
+                    $stage = 'lecture authentifiée des ressources individuelles';
+                    $individualFallback = true;
+                    $resources = $this->readOnlyResources($session, $includeIdentity ? 240.0 : 25.0, true);
+                }
+            }
             $stage = 'identité et commandes';
             $identity = array();
             if ($includeIdentity) {
@@ -680,6 +709,11 @@ class LocalThingsDeviceClient
                 $name = 'Samsung ' . str_replace('_', ' ', $deviceType);
             }
             $mapped = $this->mapper->map($resources);
+            if ($individualFallback && !$this->mapper->map(array_filter($resources, function ($rep, $href) {
+                return self::isBusinessResource($href, $rep);
+            }, ARRAY_FILTER_USE_BOTH))['entities']) {
+                throw new RuntimeException('Connexion DTLS réussie mais aucun état métier lisible via /device/0 ou /oic/res');
+            }
             if ($readOnly) {
                 foreach ($mapped['entities'] as &$entity) { $entity['actions'] = array(); }
                 unset($entity);
@@ -781,7 +815,7 @@ class LocalThingsDeviceClient
     }
 
     /** Lit les représentations annoncées, avec repli borné si /device/0 ne les agrège pas. */
-    private function readOnlyResources(LocalThingsSession $session, $budget = 25.0)
+    private function readOnlyResources(LocalThingsSession $session, $budget = 25.0, $skipAggregate = false)
     {
         $resources = array();
         $stubs = array();
@@ -791,7 +825,7 @@ class LocalThingsDeviceClient
         $truncated = false;
         $deadline = microtime(true) + max(1.0, min(240.0, (float) $budget));
         $this->log('info', '[OCF lecture seule] inventaire des ressources ; budget=' . (int) $budget . ' s');
-        foreach (array('/device/0', '/oic/res') as $directoryPath) {
+        foreach (($skipAggregate ? array('/oic/res') : array('/device/0', '/oic/res')) as $directoryPath) {
             LocalThingsDiscovery::checkpoint();
             try {
                 list($code, $payload) = $session->get($directoryPath, min(12.0, max(1.0, $deadline - microtime(true))));
@@ -999,7 +1033,7 @@ class LocalThingsDeviceClient
      * @param int $port Port DTLS.
      * @return LocalThingsSession
      */
-    private function createSession($host, $port, $readOnly = false)
+    protected function createSession($host, $port, $readOnly = false)
     {
         list($certificatePath, $keyPath) = $readOnly ? array('', '') : $this->certificateStore->mintLeaf('host:' . $host);
         $transport = new LocalThingsDtlsClient(

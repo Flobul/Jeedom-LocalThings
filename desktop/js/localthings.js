@@ -30,6 +30,7 @@
   let scanTimer = null;
   let scanPolling = false;
   let scanBusy = false;
+  let certificateBusy = false;
   let scanGeneration = 0;
 
   function renderScan(status) {
@@ -44,11 +45,11 @@
     scan?.setAttribute("aria-busy", String(Boolean(scanState.running)));
     scan?.setAttribute("aria-disabled", String(scanBusy || Boolean(stopping)));
     const probe = document.getElementById("bt_probeLocalthings");
-    if (probe) probe.disabled = scanBusy || Boolean(scanState.running);
+    if (probe) probe.disabled = certificateBusy || scanBusy || Boolean(scanState.running);
     // Le diagnostic comparatif ouvre aussi une session DTLS : il ne doit pas
     // concurrencer une découverte sur le même appareil.
     const certificate = document.getElementById("bt_certificateLocalthings");
-    if (certificate) certificate.disabled = scanBusy || Boolean(scanState.running);
+    if (certificate) certificate.disabled = certificateBusy || scanBusy || Boolean(scanState.running);
     const progress = document.getElementById("localthings-scan-progress");
     const bar = progress?.querySelector(".progress-bar");
     if (progress && bar) {
@@ -132,7 +133,7 @@
         badge.textContent = "{{handshake accepté}}";
       } else {
         badge.className = "label label-danger";
-        badge.textContent = "{{refusé}}";
+        badge.textContent = row.handshake === "refused (unknown_ca)" ? "{{certificat refusé}}" : "{{connexion non établie}}";
       }
       handshake.appendChild(badge);
       line.insertCell().textContent = row.read || "-";
@@ -148,12 +149,16 @@
   }
 
   function compareCertificates(button, host) {
+    if (certificateBusy) return;
+    certificateBusy = true;
+    renderScan(scanState);
     const icon = button.querySelector("i");
     if (icon) icon.className = "fas fa-spinner fa-spin";
     button.disabled = true;
     const restore = function () {
       if (icon) icon.className = "fas fa-certificate";
-      button.disabled = false;
+      certificateBusy = false;
+      renderScan(scanState);
     };
     ajax("certificateDiagnostic", { host: host }, function (results) {
       restore();
@@ -165,7 +170,8 @@
         const alert = document.createElement("div");
         alert.className = "alert alert-warning";
         alert.style.margin = "0";
-        alert.textContent = error || "{{Comparaison impossible}}";
+        const parsed = new DOMParser().parseFromString(String(error || "{{Comparaison impossible}}"), "text/html");
+        alert.textContent = parsed.body.textContent;
         panel.textContent = "";
         panel.appendChild(alert);
         panel.style.display = "block";

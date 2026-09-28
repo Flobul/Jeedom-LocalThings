@@ -148,18 +148,11 @@ propre session DTLS, puis lit une ressource protégée :
 - `Aucune identité cliente` : la référence, qui établit si l'appareil accepte
   une session sans certificat.
 
-Chaque profil est essayé avec les suites ECDSA puis RSA. Cette seconde variable
-compte : le transport de production impose `ECDHE-ECDSA-AES128-GCM-SHA256`
-alors que la feuille AC14K_M est RSA, si bien qu'un refus peut venir de la suite
-plutôt que du certificat.
-
-Le résultat indique, par essai, le handshake (`accepté`, `refusé`,
-`unknown_ca`), la suite réellement négociée et la lecture protégée obtenue. Un
-`2.05` prouve que le profil est reconnu ; un `4.01` ou `4.03` prouve que
-l'identité est acceptée mais la ressource refusée, ce qui diffère d'un refus de
-certificat. Le bilan ne conclut sur rien d'autre : un `unknown_ca` sur tous les
-profils ne prouve pas que toute connexion locale est impossible, il indique
-seulement que le profil AC14K_M n'est pas le bon pour ce modèle.
+Les suites ECDSA et RSA correspondent à l'identité du serveur ; elles ne
+contraignent pas le type de clé du certificat client. Une lecture protégée
+`2.05` confirme l'accès à cette ressource. `4.01` et `4.03` sont des refus
+d'accès, `4.04` une ressource absente. Aucun de ces codes ne prouve à lui seul
+que l'identité est reconnue. Un échec réseau ne constitue pas un refus de certificat.
 
 L'essai est **en lecture seule** : aucun reset, aucun changement de
 propriétaire, aucune écriture OCF, aucune clé dérivée. Le journal ne contient ni
@@ -168,14 +161,9 @@ avec la découverte, puisqu'un appareil n'accepte qu'un client DTLS actif.
 
 Pour l'exécuter : saisir l'adresse dans la barre de découverte de la page du
 plugin, cliquer sur **Comparer les certificats**, puis transmettre le journal
-**localthings**. Le port utilisé est celui de l'appareil déjà enregistré ;
-sinon, ajoutez d'abord l'appareil ou précisez le port.
-
-Sur le kit Wi-Fi MIM-H04EN de `192.168.16.178`, ce diagnostic n'a pas encore été
-exécuté : l'hôte de développement n'atteint pas ce réseau. Les résultats
-ci-dessus proviennent d'un serveur DTLS local reproduisant les trois
-comportements d'appareil documentés. La PAC AE080BXYDGG n'a pas été sondée et
-son comportement d'authentification reste inconnu.
+**localthings**. Le port est détecté avant chaque comparaison, y compris sans
+équipement enregistré. Le port enregistré sert de préférence si plusieurs répondent.
+Le réseau du client n'est pas accessible depuis l'environnement de développement.
 
 ## Widgets
 
@@ -313,12 +301,11 @@ licence MIT ; les textes correspondants sont conservés dans
 
 ### Climatisations, kit Wi-Fi MIM-H04EN et PAC EHS : état de validation
 
-L’installation signalée comprend une PAC AE080BXYDGG et trois climatisations.
-L’utilisateur a précisé que les logs du 26 et du 28 septembre 2026 concernent
-le kit Wi-Fi MIM-H04EN d’une climatisation, avec le firmware `20260320.1`.
-Le diagnostic de refus d’accès de ces logs ne doit pas être attribué à la PAC.
-Les anciennes mentions de PAC dans l’historique doivent donc être recoupées
-avec l’identité du module effectivement interrogé.
+L’installation signalée comprend une PAC EHS Mono HT Quiet de 8 kW et trois
+climatisations. Le MIM-H04EN interrogé est le boîtier Wi-Fi de cette PAC,
+avec le firmware `20260320.1` : les refus d'accès du 26 et du 28 septembre
+concernent donc bien son interface locale. L'attribution précédente à une
+climatisation était erronée.
 
 Le modèle `SAC_EHS_MONO` identifie un profil EHS même lorsque Samsung annonce
 `oic.d.airconditioner`. Une ressource `controllerstatus.ehs` dans un répertoire
