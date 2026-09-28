@@ -539,7 +539,6 @@
         "Adresse LocalThings absente": "LocalThings address missing",
         "Affichage indisponible. Consultez le journal localthings.": "Display unavailable. Check the Localthings log.",
         "Appareils connectés": "Smart devices",
-        "Aucun port DTLS connu pour cet appareil ; ajoutez-le d’abord ou précisez le port.": "No DTLS ports are known for this device; add it first or specify the port.",
         "Certificats DTLS": "DTLS Certificates",
         "Commande": "Command",
         "Communication avec l’appareil réussie": "Communication with the device was successful",
@@ -571,7 +570,6 @@
         "Transport OpenSSL DTLS": "OpenSSL DTLS Transport",
         "Tâche de rafraîchissement introuvable": "Refresh task not found",
         "Tâche de rafraîchissement introuvable, réinstallez le plugin": "Refresh task not found; please reinstall the plugin",
-        "[Certificat comparatif] Demande pour %1$s:%2$d": "[Comparison Certificate] Request for %1$s:%2$d",
         "[Discovery] Ajout manuel demandé pour %s": "[Discovery] Manual addition requested for %s",
         "[Discovery] Découverte réseau demandée : %s": "[Discovery] Network discovery requested: %s",
         "[Discovery] Tâche PHP lancée, PID=%d": "[Discovery] PHP task launched, PID=%d",
@@ -646,8 +644,9 @@
         "Valeur|Libellé;...": "Value|Label;...",
         "appareil(s) LocalThings découvert(s)": "LocalThings device(s) detected",
         "autorisé": "allowed",
+        "certificat refusé": "certificate rejected",
+        "connexion non établie": "Connection not established",
         "handshake accepté": "handshake accepted",
-        "refusé": "declined",
         "État de l’appareil actualisé": "Updated device status"
     },
     "plugins\/localthings\/desktop\/modal\/health.php": {

@@ -539,7 +539,6 @@
         "Adresse LocalThings absente": "LocalThings-Adresse fehlt",
         "Affichage indisponible. Consultez le journal localthings.": "Anzeige nicht verfügbar. Lesen Sie die Zeitung „Localthings“.",
         "Appareils connectés": "Verbundene Geräte",
-        "Aucun port DTLS connu pour cet appareil ; ajoutez-le d’abord ou précisez le port.": "Für dieses Gerät sind keine DTLS-Ports bekannt; fügen Sie diese zunächst hinzu oder geben Sie den Port an.",
         "Certificats DTLS": "DTLS-Zertifikate",
         "Commande": "Befehl",
         "Communication avec l’appareil réussie": "Kommunikation mit dem Gerät erfolgreich",
@@ -571,7 +570,6 @@
         "Transport OpenSSL DTLS": "OpenSSL-DTLS-Transport",
         "Tâche de rafraîchissement introuvable": "Aktualisierungsaufgabe nicht gefunden",
         "Tâche de rafraîchissement introuvable, réinstallez le plugin": "Aktualisierungsaufgabe nicht gefunden, bitte installieren Sie das Plugin neu",
-        "[Certificat comparatif] Demande pour %1$s:%2$d": "[Vergleichszertifikat] Anfrage für %1$s:%2$d",
         "[Discovery] Ajout manuel demandé pour %s": "[Discovery] Manuelle Hinzufügung für %s angefordert",
         "[Discovery] Découverte réseau demandée : %s": "[Discovery] Netzwerk-Erkennung angefordert: %s",
         "[Discovery] Tâche PHP lancée, PID=%d": "[Discovery] PHP-Task gestartet, PID=%d",
@@ -646,8 +644,9 @@
         "Valeur|Libellé;...": "Wert|Bezeichnung;...",
         "appareil(s) LocalThings découvert(s)": "LocalThings-Gerät(e) erkannt",
         "autorisé": "zulässig",
+        "certificat refusé": "Zertifikat abgelehnt",
+        "connexion non établie": "Verbindung nicht hergestellt",
         "handshake accepté": "Handshake akzeptiert",
-        "refusé": "abgelehnt",
         "État de l’appareil actualisé": "Aktueller Gerätestatus"
     },
     "plugins\/localthings\/desktop\/modal\/health.php": {

@@ -539,7 +539,6 @@
         "Adresse LocalThings absente": "Adresse LocalThings absente",
         "Affichage indisponible. Consultez le journal localthings.": "Affichage indisponible. Consultez le journal localthings.",
         "Appareils connectés": "Appareils connectés",
-        "Aucun port DTLS connu pour cet appareil ; ajoutez-le d’abord ou précisez le port.": "Aucun port DTLS connu pour cet appareil ; ajoutez-le d’abord ou précisez le port.",
         "Certificats DTLS": "Certificats DTLS",
         "Commande": "Commande",
         "Communication avec l’appareil réussie": "Communication avec l’appareil réussie",
@@ -571,7 +570,6 @@
         "Transport OpenSSL DTLS": "Transport OpenSSL DTLS",
         "Tâche de rafraîchissement introuvable": "Tâche de rafraîchissement introuvable",
         "Tâche de rafraîchissement introuvable, réinstallez le plugin": "Tâche de rafraîchissement introuvable, réinstallez le plugin",
-        "[Certificat comparatif] Demande pour %1$s:%2$d": "[Certificat comparatif] Demande pour %1$s:%2$d",
         "[Discovery] Ajout manuel demandé pour %s": "[Discovery] Ajout manuel demandé pour %s",
         "[Discovery] Découverte réseau demandée : %s": "[Discovery] Découverte réseau demandée : %s",
         "[Discovery] Tâche PHP lancée, PID=%d": "[Discovery] Tâche PHP lancée, PID=%d",
@@ -646,8 +644,9 @@
         "Valeur|Libellé;...": "Valeur|Libellé;...",
         "appareil(s) LocalThings découvert(s)": "appareil(s) LocalThings découvert(s)",
         "autorisé": "autorisé",
+        "certificat refusé": "certificat refusé",
+        "connexion non établie": "connexion non établie",
         "handshake accepté": "handshake accepté",
-        "refusé": "refusé",
         "État de l’appareil actualisé": "État de l’appareil actualisé"
     },
     "plugins\/localthings\/desktop\/modal\/health.php": {
