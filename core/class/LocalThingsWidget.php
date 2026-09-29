@@ -440,6 +440,20 @@ class LocalThingsWidget
         return '';
     }
 
+    /** Prefer Samsung's working mode resource when both representations are exposed. */
+    public static function redundantClimateModes($type, array $visibleActionKeys)
+    {
+        if ($type !== 'airconditioner') { return array(); }
+        $vendor = array(); $hidden = array();
+        foreach ($visibleActionKeys as $key) {
+            if (preg_match('/^mode_vs_(\d+)_modes_/', $key, $match)) { $vendor[$match[1]] = true; }
+        }
+        foreach ($visibleActionKeys as $key) {
+            if (preg_match('/^mode_(\d+)_modes_/', $key, $match) && isset($vendor[$match[1]])) { $hidden[$key] = true; }
+        }
+        return $hidden;
+    }
+
     /**
      * Retourne le libellé et l'icône adaptés à une commande du widget.
      *
@@ -455,6 +469,18 @@ class LocalThingsWidget
         $deviceType = self::profile($deviceType)['type'];
         $identity = strtolower((string) $entityKey . ' ' . (string) $name);
         $presentation = array('label' => '', 'icon' => '', 'asset' => '');
+        if ($deviceType === 'airconditioner') {
+            if (preg_match('/^mode_(?:vs_)?\d+_modes_/', $entityKey)) {
+                return array('label' => __('Mode de fonctionnement', __FILE__), 'icon' => 'fas fa-cog', 'asset' => '');
+            }
+            if (stripos($entityKey, '_option_Spi_') !== false) {
+                return array('label' => __('Ionisation (SPI)', __FILE__), 'icon' => 'fas fa-wind', 'asset' => '');
+            }
+            if (stripos($entityKey, '_option_AirMonitoring_') !== false) {
+                return array('label' => __('Surveillance de l’air (Samsung)', __FILE__), 'icon' => 'fas fa-eye', 'asset' => '');
+            }
+        }
+
 
         if (strpos($identity, 'washer_cycle') !== false) {
             return array('label' => __('Programme', __FILE__), 'icon' => '', 'asset' => 'washerCycle.svg');
@@ -492,7 +518,7 @@ class LocalThingsWidget
             return array('label' => __('Fin différée', __FILE__), 'icon' => 'fas fa-clock', 'asset' => '');
         }
         if (strpos($identity, 'temperature_desired') !== false || strpos($identity, 'setpoint') !== false) {
-            return array('label' => __('Température', __FILE__), 'icon' => '', 'asset' => 'temperature.svg');
+            return array('label' => __('Consigne', __FILE__), 'icon' => '', 'asset' => 'temperature.svg');
         }
         if (strpos($identity, 'drylevel') !== false) {
             return array('label' => __('Niveau de séchage', __FILE__), 'icon' => 'fas fa-layer-group', 'asset' => '');

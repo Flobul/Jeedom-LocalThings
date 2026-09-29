@@ -44,6 +44,7 @@ $eqLogics = eqLogic::byType($plugin->getId());
             </div>
             <div id="localthings-ownerpsk-panel" class="well" style="display:none; margin-top:10px;">
                 <strong>{{OwnerPSK — diagnostic et clé existante}}</strong>
+                <p>{{Journal dédié : localthings_ownerpsk. Les autres équipements peuvent rester activés.}}</p>
                 <p>{{Le diagnostic lit l’état d’association et sonde le transport PSK sans modifier l’appareil. Une réponse à la sonde ne prouve pas que l’accès est autorisé.}}</p>
                 <button type="button" id="bt_ownerPskDiagnose" class="btn btn-info">{{Diagnostiquer cette adresse}}</button>
                 <pre id="localthings-ownerpsk-result" style="white-space:pre-wrap;"></pre>

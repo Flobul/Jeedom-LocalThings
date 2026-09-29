@@ -25,7 +25,7 @@ try {
             ajax::success(localthings::probeHost((string) init('host')));
             break;
         case 'ownerPskDiagnostic':
-            ajax::success(localthings::deviceClient()->ownerPskDiagnostic((string) init('host')));
+            ajax::success(localthings::deviceClient('localthings_ownerpsk')->ownerPskDiagnostic((string) init('host')));
             break;
         case 'importOwnerPsk':
             ajax::success(localthings::deviceClient()->importOwnerPsk((string) init('host'), array(

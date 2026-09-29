@@ -21,7 +21,7 @@ require_once __DIR__ . '/LocalThingsCertificateDiagnostic.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.23';
+    public static $_pluginVersion = '0.4.24';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -89,7 +89,7 @@ class localthings extends eqLogic
      *
      * @return LocalThingsDeviceClient
      */
-    public static function deviceClient()
+    public static function deviceClient($logName = 'localthings')
     {
         $openssl = LocalThingsDeviceClient::findOpenSsl();
         if ($openssl === '' || !LocalThingsDeviceClient::supportsDtls($openssl)) {
@@ -100,8 +100,8 @@ class localthings extends eqLogic
             self::certificateStore(),
             self::resourcePath() . '/certificates/ocf_root_ca.pem',
             null,
-            function ($level, $message) {
-                log::add(__CLASS__, $level, $message);
+            function ($level, $message) use ($logName) {
+                log::add($logName, $level, $message);
             }
         );
     }
@@ -1265,12 +1265,18 @@ class localthings extends eqLogic
         $statusCandidates = array();
         $actions = array();
         $actionEntityKeys = array();
+        $visibleKeys = array();
+        foreach ($this->getCmd('action') as $candidate) {
+            if ($candidate->getIsVisible()) { $visibleKeys[] = (string) $candidate->getConfiguration('entityKey', ''); }
+        }
+        $redundantModes = LocalThingsWidget::redundantClimateModes($profile['type'], $visibleKeys);
 
         foreach ($this->getCmd('action') as $command) {
             if (!$command->getIsVisible()) {
                 continue;
             }
             $entityKey = (string) $command->getConfiguration('entityKey', '');
+            if (isset($redundantModes[$entityKey])) { continue; }
             $group = LocalThingsWidget::group(
                 $profile['type'],
                 $entityKey,
@@ -1299,6 +1305,7 @@ class localthings extends eqLogic
                 continue;
             }
             $entityKey = (string) $command->getConfiguration('entityKey', '');
+            if (isset($redundantModes[$entityKey])) { continue; }
             $group = LocalThingsWidget::group(
                 $profile['type'],
                 $entityKey,
@@ -1665,6 +1672,17 @@ class localthings extends eqLogic
             $label = '<span class="localthings-widget-command-label">'
                 . htmlspecialchars($command->getName(), ENT_QUOTES, 'UTF-8') . '</span>';
         }
+        $sliderValue = '';
+        if ($command->getType() === 'action' && $subType === 'slider') {
+            $stateId = (int) $command->getValue();
+            $state = $stateId > 0 ? cmd::byId($stateId) : null;
+            $value = is_object($state) ? $state->execCmd() : '';
+            $unit = (string) $command->getUnite();
+            if ($unit === '' && is_object($state)) { $unit = (string) $state->getUnite(); }
+            $sliderValue = '<output class="localthings-slider-value" aria-live="polite" data-state-cmd_id="' . $stateId
+                . '" data-unit="' . htmlspecialchars($unit, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars(is_numeric($value) ? $value . ($unit !== '' ? ' ' . $unit : '') : '—', ENT_QUOTES, 'UTF-8') . '</output>';
+        }
         $percentage = '';
         if ($isPercentage) {
             $percentageValue = LocalThingsWidget::percentageValue($command->execCmd());
@@ -1708,7 +1726,7 @@ class localthings extends eqLogic
             . '" data-command-group="' . $group . '" data-cmd_id="' . (int) $command->getId() . '"'
             . $statusAttributes . '>'
             . $visual . '<div class="localthings-widget-command-content">'
-            . $label . $html . $percentage . '</div></div>';
+            . $label . $sliderValue . $html . $percentage . '</div></div>';
     }
 }
 

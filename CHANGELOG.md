@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.24
+
+- Consigne numérique visible sur les curseurs dashboard/mobile, mise à jour pendant le déplacement et par le retour d’état, sans envoi de commande supplémentaire.
+- Un seul sélecteur de mode principal pour les clims exposant /mode/0 et /mode/vs/0 ; les commandes restent disponibles aux scénarios. Correction de la valeur courante du mode standard.
+- Correction de Spi : « Ionisation (SPI) » remplace « Mode intelligent ». Libellé de mode stable sans suffixe de collision de nom.
+- Journal dédié localthings_ownerpsk pour le diagnostic PAC, sans désactiver les autres équipements.
+
 ## 0.4.23
 
 - Diagnostic OwnerPSK depuis la découverte : état OCF et sonde PSK sans prise de propriété.

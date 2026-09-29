@@ -1339,7 +1339,7 @@ class LocalThingsMapper
         if ($this->isBinaryField($href, $field, $value)) {
             return $this->toBoolean($value) ? 1 : 0;
         }
-        if (is_array($value) && count($value) === 1 && $this->endsWith($field, '.modes')) {
+        if (is_array($value) && count($value) === 1 && ($field === 'modes' || $this->endsWith($field, '.modes'))) {
             return reset($value);
         }
         if (is_array($value) || is_object($value)) {
@@ -1842,7 +1842,7 @@ class LocalThingsMapper
             'naturalsteam' => __('Vapeur naturelle', __FILE__),
             'energysaving' => __('Économie d’énergie', __FILE__),
             'burneronalert' => __('Alerte foyer allumé', __FILE__),
-            'spi' => __('Mode intelligent', __FILE__),
+            'spi' => __('Ionisation (SPI)', __FILE__),
             'autoclean' => __('Nettoyage automatique', __FILE__),
             'airmonitoring' => __('Surveillance de l’air', __FILE__),
             'stormwashzone' => __('Zone de lavage intensif', __FILE__),

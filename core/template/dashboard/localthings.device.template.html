@@ -146,6 +146,51 @@
             });
         });
     }
+    // Preview the selected value without sending an extra command.
+    widget.querySelectorAll('.localthings-widget-command-slider').forEach(function (frame) {
+        var output = frame.querySelector('.localthings-slider-value');
+        if (!output || output.getAttribute('data-bound') === '1') return;
+        output.setAttribute('data-bound', '1');
+        var show = function (value) {
+            if (Array.isArray(value)) value = value[0];
+            var number = value == null || String(value).trim() === '' ? NaN : Number(String(value).replace(',', '.'));
+            output.textContent = isFinite(number) ? String(number) + (output.dataset.unit ? ' ' + output.dataset.unit : '') : '—';
+        };
+        frame.addEventListener('input', function (event) {
+            if (event.target.matches('input')) show(event.target.value);
+        });
+        frame.addEventListener('change', function (event) {
+            if (event.target.matches('input')) show(event.target.value);
+        });
+        var bindSlider = function () {
+            var slider = frame.querySelector('.noUi-target');
+            if (slider && slider.noUiSlider) {
+                slider.noUiSlider.off('update.localthingsValue');
+                slider.noUiSlider.on('update.localthingsValue', function (values, handle, rawValues) { show(rawValues || values); });
+                return true;
+            }
+            return false;
+        };
+        if (!bindSlider()) {
+            // Jeedom can initialise the native slider after the surrounding template.
+            setTimeout(bindSlider, 0);
+            setTimeout(bindSlider, 300);
+        }
+        frame.addEventListener('pointerdown', bindSlider, {capture: true});
+        frame.addEventListener('focusin', bindSlider);
+        if (typeof jQuery !== 'undefined') {
+            jQuery(frame).on('slide.localthingsValue slideStop.localthingsValue', function (event, ui) {
+                if (ui && typeof ui.value !== 'undefined') show(ui.value);
+                else if (typeof event.value !== 'undefined') show(event.value);
+            });
+        }
+        var stateId = output.getAttribute('data-state-cmd_id');
+        if (stateId && stateId !== '0') {
+            jeedom.cmd.addUpdateFunction(stateId, function (options) {
+                show(typeof options.value !== 'undefined' ? options.value : options.display_value);
+            });
+        }
+    });
     widget.querySelectorAll('.localthings-toggle-input').forEach(function (toggle) {
         var stateId = toggle.getAttribute('data-state-cmd_id');
         if (!stateId || toggle.getAttribute('data-update-bound') === '1') return;

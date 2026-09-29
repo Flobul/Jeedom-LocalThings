@@ -165,6 +165,22 @@ plugin, cliquer sur **Comparer les certificats**, puis transmettre le journal
 équipement enregistré. Le port enregistré sert de préférence si plusieurs répondent.
 Le réseau du client n'est pas accessible depuis l'environnement de développement.
 
+### Corrections climatiseurs et diagnostic PAC (0.4.24)
+
+Le widget affiche la consigne pendant le déplacement du curseur et suit le retour
+d’état. Un seul mode principal est affiché si les ressources standard et Samsung
+du même circuit existent ; les commandes restent accessibles aux scénarios.
+`Spi` est nommé **Ionisation (SPI)**, conformément à la terminologie Samsung,
+et non « Mode intelligent ». `AirMonitoring` reste une option de surveillance
+de l’air annoncée par le firmware ; sa présence ne démontre pas que le modèle
+possède un capteur de qualité de l’air ni que cette fonction est effective.
+
+Le diagnostic OwnerPSK écrit dans **localthings_ownerpsk** : les autres équipements
+peuvent rester activés. Pour le MIM-H04EN testé le 29 septembre, `owned:true`,
+`isop:true`, OTM `65282` et `hello_verify_request` confirment une réponse réseau
+et un appareil déjà associé. Ils ne démontrent pas une authentification PSK ni
+une fenêtre de transfert autorisée. La création de sa clé reste non résolue.
+
 ### OwnerPSK expérimental (0.4.23)
 
 Le bouton **OwnerPSK** de la barre de découverte ouvre deux fonctions :
