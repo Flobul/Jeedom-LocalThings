@@ -48,6 +48,10 @@
     if (probe) probe.disabled = certificateBusy || scanBusy || Boolean(scanState.running);
     // Le diagnostic comparatif ouvre aussi une session DTLS : il ne doit pas
     // concurrencer une découverte sur le même appareil.
+    ["bt_ownerPskDiagnose", "bt_ownerPskImport"].forEach(function (id) {
+      const button = document.getElementById(id);
+      if (button) button.disabled = certificateBusy || scanBusy || Boolean(scanState.running);
+    });
     const certificate = document.getElementById("bt_certificateLocalthings");
     if (certificate) certificate.disabled = certificateBusy || scanBusy || Boolean(scanState.running);
     const progress = document.getElementById("localthings-scan-progress");
@@ -232,6 +236,47 @@
         return;
       }
       scanAction("probe", { host: host });
+      return;
+    }
+
+    if (event.target.closest("#bt_ownerPskLocalthings")) {
+      const panel = document.getElementById("localthings-ownerpsk-panel");
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+      return;
+    }
+    const ownerImport = event.target.closest("#bt_ownerPskImport");
+    if (ownerImport || event.target.closest("#bt_ownerPskDiagnose")) {
+      if (certificateBusy || scanBusy || scanState.running) return;
+      const host = document.getElementById("in_localthings_host").value.trim();
+      const output = document.getElementById("localthings-ownerpsk-result");
+      if (!host) { output.textContent = "{{Saisissez l’adresse IPv4 de l’appareil}}"; return; }
+      const data = { host: host };
+      if (ownerImport) {
+        data.owner_uuid = document.getElementById("in_ownerPskOwner").value.trim();
+        data.device_uuid = document.getElementById("in_ownerPskDevice").value.trim();
+        data.key = document.getElementById("in_ownerPskKey").value.trim();
+        document.getElementById("in_ownerPskKey").value = "";
+      }
+      certificateBusy = true;
+      renderScan(scanState);
+      output.textContent = "{{Vérification en cours pour}} " + host + "…";
+      const finish = function () { certificateBusy = false; renderScan(scanState); };
+      ajax(ownerImport ? "importOwnerPsk" : "ownerPskDiagnostic", data, function (result) {
+        finish();
+        const state = function (value) { return value === true ? "{{oui}}" : value === false ? "{{non}}" : "{{inconnu}}"; };
+        output.textContent = ownerImport ? result.message : [
+          "{{Adresse}} : " + host + ":" + result.port,
+          "{{Déjà associé}} : " + state(result.owned),
+          "{{Opérationnel}} : " + state(result.operational),
+          "{{Méthode OTM sélectionnée}} : " + (result.oxm == null ? "{{inconnue}}" : result.oxm),
+          "{{Sonde PSK (premier échange uniquement)}} : " + result.psk_probe,
+          "{{Clé locale enregistrée}} : " + state(result.credential_installed),
+          result.message
+        ].join("\n");
+      }, function (error) {
+        finish();
+        output.textContent = new DOMParser().parseFromString(String(error || "{{Diagnostic impossible}}"), "text/html").body.textContent;
+      });
       return;
     }
 

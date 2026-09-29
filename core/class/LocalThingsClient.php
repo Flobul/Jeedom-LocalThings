@@ -1,5 +1,7 @@
 <?php
 
+require_once __DIR__ . '/LocalThingsTransport.php';
+require_once __DIR__ . '/LocalThingsOwnerPsk.php';
 require_once __DIR__ . '/LocalThingsOcfDiagnostic.php';
 require_once __DIR__ . '/LocalThingsDtlsProbe.php';
 require_once __DIR__ . '/LocalThingsOcfOnboardingDiagnostic.php';
@@ -162,7 +164,7 @@ class LocalThingsDeviceClient
         $public = new LocalThingsOcfDiagnostic($host);
         $advertised = $public->discoverPorts($logger);
         $ports = self::buildProbeOrder($advertised, $preferredPort, true);
-        $results = LocalThingsDtlsProbe::scan($host, $ports, $this->openssl);
+        $results = LocalThingsDtlsProbe::scan($host, $ports, $this->openssl, 2.0, $this->ownerPskCredential($host) !== null);
         foreach ($results as $port => $result) {
             $this->log('info', '[DTLS probe] port=' . $port . ' ; réponse=' . $result['kind']
                 . (isset($result['responder_port']) ? ' ; port source=' . $result['responder_port'] : '')
@@ -179,14 +181,79 @@ class LocalThingsDeviceClient
     }
 
     /** Détection seule, appelée sous le verrou d'hôte par le comparateur. */
-    public function certificateDiagnosticPort($host, $preferredPort = null)
+    public function certificateDiagnosticPort($host, $preferredPort = null, $psk = false)
     {
         $host = $this->validateHost($host);
         $public = new LocalThingsOcfDiagnostic($host);
         $advertised = $public->discoverPorts(function ($level, $message) { $this->log($level, $message); });
         $results = LocalThingsDtlsProbe::scan($host,
-            self::buildProbeOrder($advertised, $preferredPort, true), $this->openssl);
+            self::buildProbeOrder($advertised, $preferredPort, true), $this->openssl, 2.0, $psk);
         return LocalThingsDtlsProbe::select($results, $preferredPort ?: (count($advertised) === 1 ? $advertised[0] : null));
+    }
+
+    /** Read-only research: state inspection and PSK first-flight evidence, never OTM. */
+    public function ownerPskDiagnostic($host)
+    {
+        $host = $this->validateHost($host);
+        return $this->withHostLockFor($host, function () use ($host) {
+            $port = $this->certificateDiagnosticPort($host);
+            $transport = new LocalThingsDtlsClient($this->openssl, $host, $port, self::sourcePort($host),
+                '', '', '', $this->rootCaPath, null, true);
+            $inspection = LocalThingsOcfOnboardingDiagnostic::inspect(new LocalThingsSession($transport), $host,
+                function ($level, $message) { $this->log($level, $message); });
+            $doxm = $inspection['security']['/oic/sec/doxm'] ?? array();
+            $pstat = $inspection['security']['/oic/sec/pstat'] ?? array();
+            $probe = LocalThingsDtlsProbe::scan($host, array($port), $this->openssl, 2.0, true);
+            $kind = $probe[$port]['kind'] ?? 'no_response';
+            $result = array('port' => $port, 'owned' => $doxm['owned'] ?? null,
+                'operational' => $pstat['isop'] ?? null, 'oxm' => $doxm['oxmsel'] ?? null,
+                'psk_probe' => $kind, 'credential_installed' => $this->ownerPskCredential($host) !== null,
+                'association_available' => false,
+                'message' => 'Autorisation constructeur requise : le parcours d’association Samsung de ce modèle n’est pas disponible dans le plugin. Aucun propriétaire modifié.');
+            $this->log('info', '[OwnerPSK] port=' . $port . ' ; sonde PSK=' . $kind
+                . ' ; association automatique indisponible ; aucune écriture OCF');
+            return $result;
+        });
+    }
+
+    /** Verify an already provisioned key; publish it only after identity and business reads succeed. */
+    public function importOwnerPsk($host, array $credential)
+    {
+        $host = $this->validateHost($host);
+        $credential = LocalThingsOwnerPsk::validate($credential);
+        return $this->withHostLockFor($host, function () use ($host, $credential) {
+            $port = $this->certificateDiagnosticPort($host, null, true);
+            $session = new LocalThingsSession(new LocalThingsOwnerPskTransport($host, $port, $credential));
+            try {
+                $session->connect(12.0);
+                list($code, $payload) = $session->get('/oic/sec/doxm', 8.0);
+                $doxm = $code === 69 ? LocalThingsCbor::decode($payload) : array();
+                if (!is_array($doxm) || ($doxm['owned'] ?? false) !== true
+                    || ($doxm['deviceuuid'] ?? '') !== $credential['device_uuid']
+                    || ($doxm['devowneruuid'] ?? '') !== $credential['owner_uuid']) {
+                    throw new RuntimeException('Propriétaire et appareil OwnerPSK non confirmés');
+                }
+                list($code, $payload) = $session->get('/oic/sec/pstat', 8.0);
+                $pstat = $code === 69 ? LocalThingsCbor::decode($payload) : array();
+                if (!is_array($pstat) || ($pstat['isop'] ?? false) !== true) {
+                    throw new RuntimeException('Association OwnerPSK non finalisée : appareil non opérationnel');
+                }
+                $resources = $this->readOnlyResources($session, 60.0);
+                $business = $this->mapper->map(array_filter($resources, function ($rep, $href) {
+                    return self::isBusinessResource($href, $rep);
+                }, ARRAY_FILTER_USE_BOTH));
+                if (!$business['entities']) { throw new RuntimeException('OwnerPSK : aucun état métier lisible, clé non enregistrée'); }
+                (new LocalThingsOwnerPsk($this->certificateStore->dataDirectory()))->saveVerified($host, $credential);
+                $this->log('info', '[OwnerPSK] Identités et lecture métier vérifiées ; clé enregistrée localement');
+                return array('verified' => true, 'port' => $port, 'message' => 'Clé vérifiée et enregistrée. Vous pouvez utiliser Ajouter par IP.');
+            } finally { $session->close(); }
+        });
+    }
+
+    private function ownerPskCredential($host)
+    {
+        if (!$this->certificateStore) { return null; }
+        return (new LocalThingsOwnerPsk($this->certificateStore->dataDirectory()))->load($host);
     }
 
     /** Chaque endpoint prouvé est essayé une seule fois, y compris en cas d'échec du repli. */
@@ -747,7 +814,7 @@ class LocalThingsDeviceClient
                     'device_id' => $deviceId,
                     'host' => $host,
                     'port' => (int) $port,
-                    'auth_mode' => $readOnly ? self::AUTH_READ_ONLY : 'certificate',
+                    'auth_mode' => $readOnly ? self::AUTH_READ_ONLY : ($this->ownerPskCredential($host) !== null ? 'owner_psk' : 'certificate'),
                     'serial' => $serial,
                     'name' => $name,
                     'manufacturer' => trim((string) (
@@ -1035,6 +1102,12 @@ class LocalThingsDeviceClient
      */
     protected function createSession($host, $port, $readOnly = false)
     {
+        if (!$readOnly) {
+            $credential = $this->ownerPskCredential($host);
+            if ($credential !== null) {
+                return new LocalThingsSession(new LocalThingsOwnerPskTransport($host, $port, $credential), $this->logger);
+            }
+        }
         list($certificatePath, $keyPath) = $readOnly ? array('', '') : $this->certificateStore->mintLeaf('host:' . $host);
         $transport = new LocalThingsDtlsClient(
             $this->openssl,

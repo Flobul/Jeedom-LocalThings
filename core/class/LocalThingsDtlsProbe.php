@@ -4,7 +4,7 @@
 class LocalThingsDtlsProbe
 {
     /** Génère un premier vol avec le même OpenSSL et le même chiffrement que les sessions. */
-    public static function clientHello($openssl)
+    public static function clientHello($openssl, $psk = false)
     {
         $socket = stream_socket_server('udp://127.0.0.1:0', $errno, $error, STREAM_SERVER_BIND);
         if ($socket === false) {
@@ -13,8 +13,13 @@ class LocalThingsDtlsProbe
         $process = null;
         $pipes = array();
         try {
-            $process = proc_open(array($openssl, 's_client', '-dtls1_2', '-connect', stream_socket_get_name($socket, false),
-                '-cipher', 'ECDHE-ECDSA-AES128-GCM-SHA256:@SECLEVEL=0', '-mtu', '1200', '-quiet', '-ign_eof'),
+            $command = array($openssl, 's_client', '-dtls1_2', '-connect', stream_socket_get_name($socket, false),
+                '-cipher', $psk ? 'ECDHE-PSK-AES128-CBC-SHA256:@SECLEVEL=0' : 'ECDHE-ECDSA-AES128-GCM-SHA256:@SECLEVEL=0',
+                '-mtu', '1200', '-quiet', '-ign_eof');
+            // Dummy credential used only to generate a first flight on loopback.
+            // The probe never sends a cookie or a PSK identity to the appliance.
+            if ($psk) { $command = array_merge($command, array('-psk', str_repeat('11', 16), '-psk_identity', 'diagnostic')); }
+            $process = proc_open($command,
                 array(0 => array('pipe', 'r'), 1 => array('file', '/dev/null', 'w'), 2 => array('file', '/dev/null', 'w')),
                 $pipes, null, null, array('bypass_shell' => true));
             if (!is_resource($process)) {
@@ -55,12 +60,12 @@ class LocalThingsDtlsProbe
     }
 
     /** Sonde les candidats en parallèle, retransmet à l'identique, n'émet jamais de cookie. */
-    public static function scan($host, $ports, $openssl, $timeout = 2.0)
+    public static function scan($host, $ports, $openssl, $timeout = 2.0, $psk = false)
     {
         if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
             throw new InvalidArgumentException('La sonde LocalThings attend une adresse IPv4');
         }
-        $hello = self::clientHello($openssl);
+        $hello = self::clientHello($openssl, $psk);
         $sockets = $results = array();
         try {
             foreach (array_slice(array_unique($ports), 0, 20) as $port) {

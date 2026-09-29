@@ -30,6 +30,9 @@ $eqLogics = eqLogic::byType($plugin->getId());
             <div class="input-group">
                 <input id="in_localthings_host" type="text" inputmode="decimal" class="form-control roundedLeft" placeholder="{{Adresse IPv4 de l’appareil}}">
                 <span class="input-group-btn">
+                    <button type="button" id="bt_ownerPskLocalthings" class="btn btn-default">
+                        <i class="fas fa-key"></i> {{OwnerPSK}}
+                    </button>
                     <button type="button" id="bt_certificateLocalthings" class="btn btn-warning"
                             title="{{Comparer les profils de certificat acceptés par cet appareil}}">
                         <i class="fas fa-certificate"></i> {{Comparer les certificats}}
@@ -38,6 +41,23 @@ $eqLogics = eqLogic::byType($plugin->getId());
                         <i class="fas fa-plus"></i> {{Ajouter par IP}}
                     </button>
                 </span>
+            </div>
+            <div id="localthings-ownerpsk-panel" class="well" style="display:none; margin-top:10px;">
+                <strong>{{OwnerPSK — diagnostic et clé existante}}</strong>
+                <p>{{Le diagnostic lit l’état d’association et sonde le transport PSK sans modifier l’appareil. Une réponse à la sonde ne prouve pas que l’accès est autorisé.}}</p>
+                <button type="button" id="bt_ownerPskDiagnose" class="btn btn-info">{{Diagnostiquer cette adresse}}</button>
+                <pre id="localthings-ownerpsk-result" style="white-space:pre-wrap;"></pre>
+                <details>
+                    <summary>{{Utiliser une clé OwnerPSK déjà provisionnée}}</summary>
+                    <p>{{Cette clé doit déjà être installée dans l’appareil par une association autorisée. Le plugin ne peut pas la récupérer depuis les informations publiques. Elle sera enregistrée seulement après vérification de l’appareil, du propriétaire et des lectures métier.}}</p>
+                    <label for="in_ownerPskOwner">{{UUID OCF du propriétaire}}</label>
+                    <input id="in_ownerPskOwner" class="form-control" type="text" autocomplete="off" spellcheck="false">
+                    <label for="in_ownerPskDevice">{{UUID OCF de l’appareil}}</label>
+                    <input id="in_ownerPskDevice" class="form-control" type="text" autocomplete="off" spellcheck="false">
+                    <label for="in_ownerPskKey">{{OwnerPSK (32 caractères hexadécimaux)}}</label>
+                    <input id="in_ownerPskKey" class="form-control" type="password" autocomplete="new-password" spellcheck="false">
+                    <button type="button" id="bt_ownerPskImport" class="btn btn-primary">{{Vérifier et enregistrer la clé}}</button>
+                </details>
             </div>
             <div id="localthings-certificate-result" class="localthings-certificate-result" style="display:none;"></div>
             <div id="localthings-scan-progress" class="progress" style="display:none;">

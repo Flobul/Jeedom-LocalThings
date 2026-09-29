@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.23
+
+- Diagnostic OwnerPSK depuis la découverte : état OCF et sonde PSK sans prise de propriété.
+- Import d’une clé existante, vérifiée sur une nouvelle session PSK avant enregistrement privé et utilisation en découverte, rafraîchissement et pilotage.
+- Transport DTLS PSK par tube privé (Python 3/libssl), sans secret dans les arguments, l’environnement ou les journaux. Vérification de l’UUID à chaque connexion.
+- Calcul OwnerPSK constructeur testé pour OTM 2/65282. L’autorisation Samsung et la transaction OTM du MIM-H04EN restent indisponibles : aucune association automatique ni écriture de sécurité.
+
 ## 0.4.22
 
 - Comparaison des certificats sans équipement créé : détection préalable du port DTLS, sous verrou.

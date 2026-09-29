@@ -19,7 +19,8 @@ OCF discovery and stateless DTLS probing reviewed on 2026-09-17 against:
 - https://github.com/QuiteYellow/SmartThings-Local/blob/main/smartthings_local/protocol/dtls_probe.py
 
 The PHP implementation supports IPv4 public discovery and first-flight probing.
-It does not implement the model-specific ownership authorization, OTM or OwnerPSK.
+It does not implement model-specific ownership authorization or an OTM transaction.
+OwnerPSK runtime support and pure derivation were added in 0.4.23 (see below).
 
 Local review on 2026-09-18 of a user-provided SmartThings 1.8.47.24 JADX export
 identified the Java provisioning confirmation entry points and the advertised
@@ -36,3 +37,14 @@ retransmission and ETag checks. The documented same-account authorization
 transition remains a prerequisite outside this plugin; neither the WD53
 research result nor a successful trust-only session establishes authorization
 on another appliance model. No ownership transaction has been added.
+
+Review on 2026-09-29 of `smartthings_local/protocol/owner_psk.py`,
+`smartthings_local/protocol/auth.py`, and `tests/test_owner_psk.py`:
+https://github.com/QuiteYellow/SmartThings-Local
+Version 0.4.23 implements PHP SHA-256 P_hash derivation for the documented
+120-byte GCM key block, OTM labels 2/0xFF02, and owner-before-device UUID order.
+Synthetic upstream vectors are used only in local tests. PSK callback semantics
+(raw UUID and NUL rejection) follow this MIT-licensed reference; the existing
+smartthings-local-LICENSE applies. The Python ctypes transport is a local
+implementation with no third-party Python dependency. No ownership authorization
+or security-write transaction is implemented or claimed for MIM-H04EN.

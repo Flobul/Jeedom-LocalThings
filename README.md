@@ -165,6 +165,47 @@ plugin, cliquer sur **Comparer les certificats**, puis transmettre le journal
 équipement enregistré. Le port enregistré sert de préférence si plusieurs répondent.
 Le réseau du client n'est pas accessible depuis l'environnement de développement.
 
+### OwnerPSK expérimental (0.4.23)
+
+Le bouton **OwnerPSK** de la barre de découverte ouvre deux fonctions :
+
+1. **Diagnostiquer cette adresse** : détecte le port, lit l’état OCF sans
+   certificat client avec vérification du serveur et sonde le premier échange
+   ECDHE-PSK. Aucun cookie ni identité PSK n’est envoyé par cette sonde. Une
+   réponse ne prouve ni l’autorisation ni la compatibilité d’une association.
+2. **Utiliser une clé déjà provisionnée** : renseigner les UUID OCF du propriétaire
+   et de l’appareil, puis la clé de 16 octets (32 caractères hexadécimaux). Le plugin
+   vérifie une nouvelle session PSK, l’identité de l’appareil, le propriétaire et
+   une lecture métier avant de remplacer le fichier local. Un échec conserve la
+   clé précédente. Utiliser ensuite **Ajouter par IP** pour créer l’équipement.
+
+Le transport utilise `ECDHE-PSK-AES128-CBC-SHA256` et l’UUID propriétaire sous
+forme de 16 octets. OpenSSL ne peut pas transmettre une identité contenant un
+octet nul : ces clés sont refusées explicitement. Python 3 et une bibliothèque
+OpenSSL libssl avec DTLS PSK sont nécessaires ; aucun paquet Python tiers n’est requis.
+Les secrets circulent vers le transport par un tube privé, jamais par les arguments
+ou l’environnement. Le fichier de clé est privé (0600, répertoire 0700) et protégé
+contre l’exécution HTTP. Les sauvegardes du répertoire `data` contiennent ces secrets.
+La clé est associée à l’IP et à l’UUID de l’appareil ; après un changement d’IP,
+la vérifier à nouveau sur la nouvelle adresse. Le transport confirme l’UUID avant
+chaque session de lecture ou de pilotage. L’authentification PSK prouve la possession
+du secret partagé ; elle ne repose pas sur un certificat serveur.
+
+**Limite actuelle pour le MIM-H04EN :** il est déjà associé (`owned:true`). Le
+parcours Samsung accordant une nouvelle association pour ce modèle n’est pas
+publiquement disponible ni validé. Le plugin ne fournit donc pas de bouton de
+prise de propriété, ne réinitialise pas l’appareil et n’écrit pas `/oic/sec/*`.
+Il ne sait pas extraire ou créer une clé utilisable à partir des seules ressources
+publiques. L’import exige une clé déjà installée par un parcours autorisé.
+
+Le calcul pur OwnerPSK est implémenté et testé pour les méthodes constructeur
+`2` et `65282` et la session `ECDHE-ECDSA-AES128-GCM-SHA256`. Il n’est pas appelé
+sur une session publique : obtenir une session constructeur autorisée et finaliser
+une transaction OTM reste une étape distincte, non implémentée pour le MIM-H04EN.
+La recherche repose sur [la note OCF-PKI de SmartThings-Local](https://github.com/QuiteYellow/SmartThings-Local/blob/main/docs/ocf-pki-laundry.md),
+validée sur des appareils de lavage, pas sur cette PAC. Aucun succès de transport
+local simulé ne constitue une validation sur le boîtier réel.
+
 ## Widgets
 
 Chaque équipement peut utiliser soit le widget standard du core Jeedom, soit

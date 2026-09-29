@@ -24,6 +24,14 @@ try {
         case 'probe':
             ajax::success(localthings::probeHost((string) init('host')));
             break;
+        case 'ownerPskDiagnostic':
+            ajax::success(localthings::deviceClient()->ownerPskDiagnostic((string) init('host')));
+            break;
+        case 'importOwnerPsk':
+            ajax::success(localthings::deviceClient()->importOwnerPsk((string) init('host'), array(
+                'owner_uuid' => (string) init('owner_uuid'), 'device_uuid' => (string) init('device_uuid'),
+                'key' => (string) init('key'))));
+            break;
         case 'certificateDiagnostic':
             ajax::success(
                 localthings::compareCertificates((string) init('host'), init('port'))

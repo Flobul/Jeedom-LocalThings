@@ -21,7 +21,7 @@ require_once __DIR__ . '/LocalThingsCertificateDiagnostic.php';
  */
 class localthings extends eqLogic
 {
-    public static $_pluginVersion = '0.4.22';
+    public static $_pluginVersion = '0.4.23';
     public static $_widgetPossibility = array('custom' => true, 'custom::layout' => true);
 
     /**
@@ -165,7 +165,9 @@ class localthings extends eqLogic
      */
     public static function probeHost($host)
     {
-        self::assertCertificates();
+        if ((new LocalThingsOwnerPsk(self::dataPath()))->load(trim((string) $host)) === null) {
+            self::assertCertificates();
+        }
         log::add(__CLASS__, 'info', sprintf(__('[Discovery] Ajout manuel demandé pour %s', __FILE__), trim((string) $host)));
         $status = LocalThingsDiscovery::start(
             self::resourcePath() . '/discover.php',

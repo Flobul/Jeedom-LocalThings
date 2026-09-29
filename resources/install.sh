@@ -40,5 +40,10 @@ if ! "${OPENSSL_BIN}" s_client -help 2>&1 | grep -q -- "-bind"; then
 fi
 
 chmod +x "${RESOURCE_DIR}/discover.php"
+if command -v python3 >/dev/null 2>&1; then
+    python3 "${RESOURCE_DIR}/owner_psk_transport.py" --check || echo "Transport OwnerPSK optionnel indisponible."
+else
+    echo "OwnerPSK optionnel : installer Python 3 et libssl pour utiliser une clé existante."
+fi
 echo 100 > "${PROGRESS_FILE}"
 echo "Dépendances LocalThings installées."
