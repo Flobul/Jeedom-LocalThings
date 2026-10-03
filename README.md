@@ -165,6 +165,14 @@ plugin, cliquer sur **Comparer les certificats**, puis transmettre le journal
 équipement enregistré. Le port enregistré sert de préférence si plusieurs répondent.
 Le réseau du client n'est pas accessible depuis l'environnement de développement.
 
+### Attente des échanges simultanés (0.4.25)
+
+Une découverte attend maintenant jusqu'à six minutes lorsqu'un autre échange
+utilise le même port UDP source. Certaines lectures OCF peuvent durer quatre
+minutes ; l'ancien délai d'une minute les faisait échouer à tort. Le journal
+indique le port occupé et le temps attendu. Une impossibilité d'utiliser le
+verrou système produit une erreur distincte, sans attente inutile.
+
 ### Corrections climatiseurs et diagnostic PAC (0.4.24)
 
 Le widget affiche la consigne pendant le déplacement du curseur et suit le retour

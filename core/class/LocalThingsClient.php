@@ -25,6 +25,10 @@ class LocalThingsDeviceClient
     // Samsung appliances need a short quiet period after a write. Reading the
     // target resource too soon can make the firmware restore its former value.
     private const WRITE_SETTLE_DELAY_US = 4500000;
+    // Une découverte en lecture seule peut consacrer 240 s aux ressources,
+    // puis lire l'identité. Une attente de 60 s rejetait donc un second accès
+    // alors que le premier échange se déroulait encore normalement.
+    private const HOST_LOCK_WAIT_SECONDS = 360;
 
     private $openssl;
     private $certificateStore;
@@ -1213,22 +1217,41 @@ class LocalThingsDeviceClient
             throw new RuntimeException(__('Création du verrou LocalThings impossible', __FILE__));
         }
         @chmod($path, 0600);
-        $deadline = microtime(true) + 60.0;
+        $started = microtime(true);
+        $deadline = $started + self::HOST_LOCK_WAIT_SECONDS;
         $locked = false;
+        $waitLogged = false;
         try {
             do {
                 LocalThingsDiscovery::checkpoint();
-                $locked = flock($handle, LOCK_EX | LOCK_NB);
+                $wouldBlock = 0;
+                $locked = @flock($handle, LOCK_EX | LOCK_NB, $wouldBlock);
                 if (!$locked) {
+                    if (!$wouldBlock) {
+                        throw new RuntimeException(__('Impossible de prendre le verrou LocalThings (échec de flock)', __FILE__));
+                    }
+                    if (!$waitLogged && microtime(true) - $started >= 10.0) {
+                        $this->log('info', '[Verrou] Port source ' . self::sourcePort($host)
+                            . ' occupé ; attente de la fin de l’échange précédent');
+                        $waitLogged = true;
+                    }
                     usleep(100000);
                 }
             } while (!$locked && microtime(true) < $deadline);
             if (!$locked) {
-                throw new RuntimeException(__('Un autre échange LocalThings est déjà en cours', __FILE__));
+                throw new RuntimeException(__('Un autre échange LocalThings est déjà en cours', __FILE__)
+                    . ' (port source ' . self::sourcePort($host) . ', attente de '
+                    . self::HOST_LOCK_WAIT_SECONDS . ' s)');
+            }
+            if ($waitLogged) {
+                $this->log('info', '[Verrou] Port source ' . self::sourcePort($host)
+                    . ' libéré après ' . (int) round(microtime(true) - $started) . ' s');
             }
             return call_user_func($callback);
         } finally {
-            flock($handle, LOCK_UN);
+            if ($locked) {
+                flock($handle, LOCK_UN);
+            }
             fclose($handle);
         }
     }
